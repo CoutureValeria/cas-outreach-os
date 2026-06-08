@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAS Outreach OS</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f11;
+    --surface: #1a1a1f;
+    --surface2: #242429;
+    --border: #2e2e36;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --accent: #6c63ff;
+    --accent-dim: #3d3870;
+    --green: #22c55e;
+    --green-dim: #14532d;
+    --yellow: #f59e0b;
+    --yellow-dim: #451a03;
+    --red: #ef4444;
+    --red-dim: #450a0a;
+    --blue: #3b82f6;
+    --blue-dim: #1e3a5f;
+    --pink: #ec4899;
+    --pink-dim: #500724;
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+  .app { display: flex; height: 100vh; overflow: hidden; }
+  .sidebar { width: 200px; min-width: 200px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .main { flex: 1; overflow-y: auto; padding: 24px; }
+  .logo { padding: 20px 16px 16px; font-size: 13px; font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); }
+  .logo span { color: var(--accent); }
+  .logo-sub { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  .nav { flex: 1; padding: 8px 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; cursor: pointer; color: var(--muted); transition: color 0.15s, background 0.15s; font-size: 13px; border-left: 3px solid transparent; user-select: none; }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--text); background: var(--surface2); border-left-color: var(--accent); }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .nav-badge { margin-left: auto; background: var(--accent-dim); color: var(--accent); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+  .btn-settings { background: none; border: 1px solid var(--border); color: var(--muted); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; width: 100%; text-align: center; transition: color 0.15s, border-color 0.15s; }
+  .btn-settings:hover { color: var(--text); border-color: var(--accent); }
+
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .page-title { font-size: 20px; font-weight: 600; }
+  .page-actions { display: flex; gap: 8px; align-items: center; }
+
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .metric-value { font-size: 28px; font-weight: 700; margin-bottom: 2px; }
+  .metric-label { font-size: 12px; color: var(--muted); }
+  .metric-card.accent .metric-value { color: var(--accent); }
+  .metric-card.green .metric-value { color: var(--green); }
+  .metric-card.yellow .metric-value { color: var(--yellow); }
+  .metric-card.blue .metric-value { color: var(--blue); }
+  .metric-card.pink .metric-value { color: var(--pink); }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity 0.15s, transform 0.1s; white-space: nowrap; }
+  .btn:hover { opacity: 0.85; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-success { background: var(--green); color: #000; font-weight: 600; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-xs { padding: 3px 8px; font-size: 11px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-yellow { background: var(--yellow-dim); color: var(--yellow); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+  .badge-muted { background: var(--surface2); color: var(--muted); }
+  .badge-pink { background: var(--pink-dim); color: var(--pink); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .card.warm { border-left: 3px solid var(--green); }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .card-title { font-weight: 600; font-size: 14px; }
+  .card-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+  .text-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; font-family: var(--font); margin: 8px 0; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 12px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  .loading { text-align: center; padding: 40px; color: var(--muted); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+  .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; max-width: 320px; display: flex; align-items: center; gap: 10px; animation: slide-in 0.2s ease; }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--blue); }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+  #settings-panel { position: fixed; top: 0; right: 0; width: 340px; height: 100%; background: var(--surface); border-left: 1px solid var(--border); padding: 24px; z-index: 1000; transform: translateX(100%); transition: transform 0.2s ease; overflow-y: auto; }
+  #settings-panel.open { transform: translateX(0); }
+  .settings-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .settings-sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+  .settings-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+  .settings-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; margin-bottom: 14px; font-family: var(--font); }
+  .settings-input:focus { outline: 1px solid var(--accent); }
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; transition: all 0.15s; }
+  .filter-btn:hover, .filter-btn.active { color: var(--text); border-color: var(--accent); background: var(--accent-dim); }
+
+  .notes-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 4px 8px; font-size: 12px; font-family: var(--font); width: 160px; resize: none; height: 32px; }
+  .notes-input:focus { outline: 1px solid var(--accent); }
+
+  .channel-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .channel-email { background: var(--accent-dim); color: var(--accent); }
+  .channel-instagram { background: var(--pink-dim); color: var(--pink); }
+  .channel-linkedin { background: var(--blue-dim); color: var(--blue); }
+
+  .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .analytics-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .analytics-card-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .analytics-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .analytics-row:last-child { border-bottom: none; }
+  .analytics-row-label { font-size: 13px; color: var(--muted); }
+  .analytics-row-value { font-size: 14px; font-weight: 600; }
+
+  .linkedin-find-row { display: flex; gap: 8px; margin-bottom: 20px; }
+  .linkedin-find-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: var(--font); }
+  .linkedin-find-input:focus { outline: 1px solid var(--accent); }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .dot-green { background: var(--green); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-muted { background: var(--muted); }
+
+  @media (max-width: 900px) {
+    .sidebar { width: 56px; min-width: 56px; }
+    .nav-item span, .logo-sub, .logo-title { display: none; }
+    .nav-badge { display: none; }
+    .nav-item { justify-content: center; padding: 12px; }
+    .nav-icon { font-size: 18px; width: auto; }
+    .sidebar-footer { padding: 8px; }
+    .btn-settings { font-size: 16px; padding: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div><span>CAS</span> Outreach OS</div>
+      <div class="logo-sub logo-title">Unified Outreach Dashboard</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-tab="email">
+        <span class="nav-icon">✉️</span>
+        <span>Email Queue</span>
+        <span class="nav-badge" id="badge-email">0</span>
+      </div>
+      <div class="nav-item" data-tab="instagram">
+        <span class="nav-icon">📸</span>
+        <span>Instagram</span>
+        <span class="nav-badge" id="badge-ig">0</span>
+      </div>
+      <div class="nav-item" data-tab="linkedin">
+        <span class="nav-icon">💼</span>
+        <span>LinkedIn</span>
+        <span class="nav-badge" id="badge-li">0</span>
+      </div>
+      <div class="nav-item" data-tab="warm">
+        <span class="nav-icon">🔥</span>
+        <span>Warm Leads</span>
+        <span class="nav-badge" id="badge-warm" style="background:var(--green-dim);color:var(--green)">0</span>
+      </div>
+      <div class="nav-item" data-tab="analytics">
+        <span class="nav-icon">📊</span>
+        <span>Analytics</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Email Queue -->
+    <div class="page active" id="page-email">
+      <div class="page-header">
+        <h1 class="page-title">Email Queue</h1>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadEmail()">↻ Refresh</button>
+          <button class="btn btn-primary btn-sm" onclick="sendNext()">▶ Send Next</button>
+        </div>
+      </div>
+      <div class="metrics" id="email-metrics">
+        <div class="metric-card accent"><div class="metric-value" id="em-approved">–</div><div class="metric-label">Approved</div></div>
+        <div class="metric-card"><div class="metric-value" id="em-sent">–</div><div class="metric-label">Sent</div></div>
+        <div class="metric-card green"><div class="metric-value" id="em-warm">–</div><div class="metric-label">Warm</div></div>
+        <div class="metric-card yellow"><div class="metric-value" id="em-reply-rate">–</div><div class="metric-label">Reply Rate</div></div>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" data-filter="approved" onclick="setEmailFilter(this,'approved')">Approved</button>
+        <button class="filter-btn" data-filter="sent" onclick="setEmailFilter(this,'sent')">Sent</button>
+        <button class="filter-btn" data-filter="warm" onclick="setEmailFilter(this,'warm')">Warm</button>
+        <button class="filter-btn" data-filter="all" onclick="setEmailFilter(this,'all')">All</button>
+      </div>
+      <div id="email-list"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- Instagram -->
+    <div class="page" id="page-instagram">
+      <div class="page-header">
+        <h1 class="page-title">Instagram</h1>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadInstagram()">↻ Refresh</button>
+          <button class="btn btn-primary btn-sm" onclick="findIgHandles()">🔍 Find Handles</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="metric-card"><div class="metric-value" id="ig-total">–</div><div class="metric-label">Total</div></div>
+        <div class="metric-card pink"><div class="metric-value" id="ig-sent">–</div><div class="metric-label">DMs Sent</div></div>
+        <div class="metric-card green"><div class="metric-value" id="ig-replied">–</div><div class="metric-label">Replied</div></div>
+        <div class="metric-card yellow"><div class="metric-value" id="ig-rate">–</div><div class="metric-label">Reply Rate</div></div>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" data-filter="new" onclick="setIgFilter(this,'new')">New</button>
+        <button class="filter-btn" data-filter="dm_sent" onclick="setIgFilter(this,'dm_sent')">DM Sent</button>
+        <button class="filter-btn" data-filter="replied" onclick="setIgFilter(this,'replied')">Replied</button>
+        <button class="filter-btn" data-filter="warm" onclick="setIgFilter(this,'warm')">Warm</button>
+        <button class="filter-btn" data-filter="all" onclick="setIgFilter(this,'all')">All</button>
+      </div>
+      <div id="ig-list"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- LinkedIn -->
+    <div class="page" id="page-linkedin">
+      <div class="page-header">
+        <h1 class="page-title">LinkedIn</h1>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadLinkedIn()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="metric-card"><div class="metric-value" id="li-total">–</div><div class="metric-label">Total</div></div>
+        <div class="metric-card blue"><div class="metric-value" id="li-sent">–</div><div class="metric-label">Requests Sent</div></div>
+        <div class="metric-card green"><div class="metric-value" id="li-accepted">–</div><div class="metric-label">Accepted</div></div>
+        <div class="metric-card yellow"><div class="metric-value" id="li-rate">–</div><div class="metric-label">Accept Rate</div></div>
+      </div>
+      <div class="linkedin-find-row">
+        <input class="linkedin-find-input" id="li-clinic-input" placeholder="Clinic name (e.g. Södermalms Djurklinik)" onkeydown="if(event.key==='Enter')findLinkedIn()">
+        <button class="btn btn-primary" onclick="findLinkedIn()">🔍 Find Decision Maker</button>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" data-filter="all" onclick="setLiFilter(this,'all')">All</button>
+        <button class="filter-btn" data-filter="note_generated" onclick="setLiFilter(this,'note_generated')">Ready</button>
+        <button class="filter-btn" data-filter="sent" onclick="setLiFilter(this,'sent')">Sent</button>
+        <button class="filter-btn" data-filter="accepted" onclick="setLiFilter(this,'accepted')">Accepted</button>
+        <button class="filter-btn" data-filter="replied" onclick="setLiFilter(this,'replied')">Replied</button>
+      </div>
+      <div id="li-list"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- Warm Leads -->
+    <div class="page" id="page-warm">
+      <div class="page-header">
+        <h1 class="page-title">Warm Leads</h1>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadWarm()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="metric-card green"><div class="metric-value" id="warm-total">–</div><div class="metric-label">Total Warm</div></div>
+        <div class="metric-card accent"><div class="metric-value" id="warm-email">–</div><div class="metric-label">Email</div></div>
+        <div class="metric-card pink"><div class="metric-value" id="warm-ig">–</div><div class="metric-label">Instagram</div></div>
+        <div class="metric-card blue"><div class="metric-value" id="warm-li">–</div><div class="metric-label">LinkedIn</div></div>
+      </div>
+      <div id="warm-list"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- Analytics -->
+    <div class="page" id="page-analytics">
+      <div class="page-header">
+        <h1 class="page-title">Analytics</h1>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadAnalytics()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="analytics-grid" id="analytics-content">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Settings Panel -->
+<div id="settings-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <div class="settings-title">Settings</div>
+    <button onclick="closeSettings()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">×</button>
+  </div>
+  <div class="settings-sub">API URLs and keys are stored in browser localStorage only.</div>
+  <label class="settings-label">Email Engine URL</label>
+  <input class="settings-input" id="cfg-email-url" placeholder="https://cas-email-engine-backend-production-3b02.up.railway.app">
+  <label class="settings-label">Email Engine API Key</label>
+  <input class="settings-input" id="cfg-email-key" type="password" placeholder="1790f2bc...">
+  <div class="divider"></div>
+  <label class="settings-label">Outreach OS URL</label>
+  <input class="settings-input" id="cfg-os-url" placeholder="http://localhost:3002">
+  <label class="settings-label">Outreach OS API Key</label>
+  <input class="settings-input" id="cfg-os-key" type="password" placeholder="your-api-key">
+  <div class="divider"></div>
+  <button class="btn btn-primary" style="width:100%" onclick="saveSettings()">Save</button>
+  <div style="margin-top:10px">
+    <button class="btn btn-ghost btn-sm" style="width:100%" onclick="testConnections()">Test Connections</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const CFG_KEYS = ['email-url', 'email-key', 'os-url', 'os-key'];
+let cfg = {};
+
+function loadCfg() {
+  cfg = {
+    emailUrl: ls('email-url') || 'https://cas-email-engine-backend-production-3b02.up.railway.app',
+    emailKey: ls('email-key') || '',
+    osUrl:    ls('os-url')    || 'http://localhost:3002',
+    osKey:    ls('os-key')    || '',
+  };
+}
+
+function ls(k, v) {
+  if (v !== undefined) { localStorage.setItem('cas_' + k, v); return v; }
+  return localStorage.getItem('cas_' + k) || '';
+}
+
+function openSettings() {
+  document.getElementById('cfg-email-url').value = cfg.emailUrl;
+  document.getElementById('cfg-email-key').value = cfg.emailKey;
+  document.getElementById('cfg-os-url').value    = cfg.osUrl;
+  document.getElementById('cfg-os-key').value    = cfg.osKey;
+  document.getElementById('settings-panel').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-panel').classList.remove('open');
+}
+
+function saveSettings() {
+  ls('email-url', document.getElementById('cfg-email-url').value.trim());
+  ls('email-key', document.getElementById('cfg-email-key').value.trim());
+  ls('os-url',    document.getElementById('cfg-os-url').value.trim());
+  ls('os-key',    document.getElementById('cfg-os-key').value.trim());
+  loadCfg();
+  closeSettings();
+  toast('Settings saved', 'success');
+  refreshCurrentTab();
+}
+
+async function testConnections() {
+  loadCfg();
+  let ok = 0;
+  try {
+    const r = await fetch(cfg.emailUrl + '/health', { headers: emailHeaders() });
+    if (r.ok) { ok++; toast('Email Engine: connected', 'success'); } else toast('Email Engine: ' + r.status, 'error');
+  } catch { toast('Email Engine: unreachable', 'error'); }
+  try {
+    const r = await fetch(cfg.osUrl + '/health');
+    if (r.ok) { ok++; toast('Outreach OS: connected', 'success'); } else toast('Outreach OS: ' + r.status, 'error');
+  } catch { toast('Outreach OS: unreachable', 'error'); }
+}
+
+// ── HTTP helpers ──────────────────────────────────────────────────────────
+function emailHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (cfg.emailKey) h['X-API-Key'] = cfg.emailKey;
+  return h;
+}
+
+function osHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (cfg.osKey) h['X-API-Key'] = cfg.osKey;
+  return h;
+}
+
+async function api(base, path, method = 'GET', body) {
+  const headers = base === 'email' ? emailHeaders() : osHeaders();
+  const url = (base === 'email' ? cfg.emailUrl : cfg.osUrl) + path;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) { const e = await r.json().catch(() => ({ error: r.statusText })); throw new Error(e.error || r.statusText); }
+  return r.json();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = `<span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function copyToClipboard(text, label = 'Copied') {
+  navigator.clipboard.writeText(text).then(() => toast(label, 'success')).catch(() => toast('Copy failed', 'error'));
+}
+
+// ── Nav ───────────────────────────────────────────────────────────────────
+let activeTab = 'email';
+
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    const tab = el.dataset.tab;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('page-' + tab).classList.add('active');
+    activeTab = tab;
+    refreshCurrentTab();
+  });
+});
+
+function refreshCurrentTab() {
+  if (activeTab === 'email') loadEmail();
+  else if (activeTab === 'instagram') loadInstagram();
+  else if (activeTab === 'linkedin') loadLinkedIn();
+  else if (activeTab === 'warm') loadWarm();
+  else if (activeTab === 'analytics') loadAnalytics();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+const STATUS_BADGES = {
+  new: 'badge-muted', approved: 'badge-accent', sent: 'badge-blue',
+  warm: 'badge-green', replied: 'badge-green', dm_sent: 'badge-pink',
+  note_generated: 'badge-accent', accepted: 'badge-green',
+  not_interested: 'badge-muted', opted_out: 'badge-red',
+  no_response: 'badge-muted', bounced: 'badge-red', skipped: 'badge-muted',
+};
+
+function badge(status) {
+  const cls = STATUS_BADGES[status] || 'badge-muted';
+  return `<span class="badge ${cls}">${status}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '–';
+  return new Date(d).toLocaleDateString('sv-SE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Email Queue ───────────────────────────────────────────────────────────
+let emailFilter = 'approved';
+let emailLeads = [];
+
+function setEmailFilter(btn, f) {
+  document.querySelectorAll('#page-email .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  emailFilter = f;
+  renderEmailList();
+}
+
+async function loadEmail() {
+  document.getElementById('email-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [leadsRes, metricsRes] = await Promise.all([
+      api('email', '/api/leads'),
+      api('email', '/api/metrics').catch(() => null),
+    ]);
+    emailLeads = leadsRes.leads || leadsRes || [];
+
+    const approved = emailLeads.filter(l => l.status === 'approved').length;
+    const sent = emailLeads.filter(l => l.status === 'sent').length;
+    const warm = emailLeads.filter(l => l.status === 'warm').length;
+
+    document.getElementById('em-approved').textContent = approved;
+    document.getElementById('em-sent').textContent = sent;
+    document.getElementById('em-warm').textContent = warm;
+    document.getElementById('badge-email').textContent = approved;
+
+    if (metricsRes) {
+      const rate = metricsRes.reply_rate ?? (sent > 0 ? Math.round((warm / sent) * 100) : 0);
+      document.getElementById('em-reply-rate').textContent = rate + '%';
+    } else {
+      document.getElementById('em-reply-rate').textContent = sent > 0 ? Math.round((warm / sent) * 100) + '%' : '0%';
+    }
+
+    renderEmailList();
+  } catch (e) {
+    document.getElementById('email-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+function renderEmailList() {
+  const filtered = emailFilter === 'all' ? emailLeads : emailLeads.filter(l => l.status === emailFilter);
+  const el = document.getElementById('email-list');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>No leads</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(l => `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(l.clinic_name || l.name || 'Unknown Clinic')}</div>
+          <div class="card-subtitle">${esc(l.email || '')} · ${esc(l.area || l.city || '')}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${l.hot_lead ? '<span class="badge badge-yellow">🔥 hot</span>' : ''}
+          ${badge(l.status)}
+        </div>
+      </div>
+      ${l.email_subject ? `<div class="card-badges"><span class="badge badge-muted">Subject: ${esc(l.email_subject)}</span></div>` : ''}
+      ${l.email_body ? `<div class="text-box">${esc(l.email_body).substring(0, 300)}${l.email_body.length > 300 ? '…' : ''}</div>` : ''}
+      <div class="card-actions">
+        ${l.email_body ? `<button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.email_body)}, "Email copied")'>📋 Copy Email</button>` : ''}
+        ${l.status === 'approved' ? `<button class="btn btn-primary btn-sm" onclick="approveSend('${l.id}')">▶ Send Now</button>` : ''}
+        <span style="font-size:11px;color:var(--muted);margin-left:4px">${fmtDate(l.created_at)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function approveSend(id) {
+  try {
+    await api('email', '/api/send/next', 'POST', { force: true });
+    toast('Send triggered', 'success');
+    setTimeout(loadEmail, 1500);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function sendNext() {
+  try {
+    const r = await api('email', '/api/send/next', 'POST', { force: true });
+    toast(r.message || 'Send triggered', 'success');
+    setTimeout(loadEmail, 1500);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Instagram ─────────────────────────────────────────────────────────────
+let igFilter = 'new';
+let igLeads = [];
+
+function setIgFilter(btn, f) {
+  document.querySelectorAll('#page-instagram .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  igFilter = f;
+  renderIgList();
+}
+
+async function loadInstagram() {
+  document.getElementById('ig-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [leadsRes, statsRes] = await Promise.all([
+      api('os', '/api/instagram/leads'),
+      api('os', '/api/analytics').catch(() => null),
+    ]);
+    igLeads = leadsRes.leads || [];
+
+    const s = statsRes?.instagram;
+    document.getElementById('ig-total').textContent = s?.total ?? igLeads.length;
+    document.getElementById('ig-sent').textContent  = s?.dm_sent ?? igLeads.filter(l => l.status === 'dm_sent').length;
+    document.getElementById('ig-replied').textContent = s?.replied ?? igLeads.filter(l => l.status === 'replied' || l.status === 'warm').length;
+    document.getElementById('ig-rate').textContent  = (s?.reply_rate ?? 0) + '%';
+    document.getElementById('badge-ig').textContent = igLeads.filter(l => l.status === 'new').length;
+
+    renderIgList();
+  } catch (e) {
+    document.getElementById('ig-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+const IG_DM = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
+
+function renderIgList() {
+  const filtered = igFilter === 'all' ? igLeads : igLeads.filter(l => l.status === igFilter);
+  const el = document.getElementById('ig-list');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📸</div>No Instagram leads</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(l => `
+    <div class="card${l.status === 'warm' ? ' warm' : ''}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(l.handle)}</div>
+          <div class="card-subtitle">${esc(l.clinic_name || '')} · ${esc(l.area || '')}</div>
+        </div>
+        ${badge(l.status)}
+      </div>
+      ${l.reply_text ? `<div class="text-box" style="border-left:3px solid var(--green)">${esc(l.reply_text)}</div>` : ''}
+      <div class="card-actions">
+        <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(IG_DM)}, "DM copied")'>📋 Copy DM</button>
+        ${l.status === 'new' ? `<button class="btn btn-sm" style="background:var(--pink);color:#fff" onclick="igSetStatus('${l.id}','dm_sent')">✓ Mark Sent</button>` : ''}
+        ${l.status === 'dm_sent' ? `<button class="btn btn-success btn-sm" onclick="igMarkReplied('${l.id}')">💬 Mark Replied</button>` : ''}
+        ${l.status === 'replied' ? `<button class="btn btn-success btn-sm" onclick="igSetStatus('${l.id}','warm')">🔥 Mark Warm</button>` : ''}
+        <input class="notes-input" placeholder="Notes…" value="${esc(l.notes || '')}" onblur="igSaveNotes('${l.id}', this.value)" onkeydown="if(event.key==='Enter'){igSaveNotes('${l.id}',this.value);this.blur()}">
+        <span style="font-size:11px;color:var(--muted)">${fmtDate(l.found_at)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function igSetStatus(id, status) {
+  try {
+    await api('os', `/api/instagram/leads/${id}/status`, 'PUT', { status });
+    toast('Updated', 'success');
+    loadInstagram();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function igMarkReplied(id) {
+  const text = prompt('Reply text (optional):') ?? '';
+  api('os', `/api/instagram/leads/${id}/status`, 'PUT', { status: 'replied', reply_text: text })
+    .then(() => { toast('Marked replied', 'success'); loadInstagram(); })
+    .catch(e => toast(e.message, 'error'));
+}
+
+async function igSaveNotes(id, notes) {
+  try {
+    await api('os', `/api/instagram/leads/${id}/notes`, 'PUT', { notes });
+  } catch {}
+}
+
+async function findIgHandles() {
+  const btn = document.querySelector('#page-instagram .page-actions .btn-primary');
+  btn.disabled = true;
+  btn.textContent = '⏳ Searching…';
+  try {
+    const r = await api('os', '/api/instagram/find', 'POST', { count: 8 });
+    toast(`Found ${r.found} new handles`, 'success');
+    loadInstagram();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '🔍 Find Handles'; }
+}
+
+// ── LinkedIn ──────────────────────────────────────────────────────────────
+let liFilter = 'all';
+let liLeads = [];
+
+function setLiFilter(btn, f) {
+  document.querySelectorAll('#page-linkedin .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  liFilter = f;
+  renderLiList();
+}
+
+async function loadLinkedIn() {
+  document.getElementById('li-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [leadsRes, statsRes] = await Promise.all([
+      api('os', '/api/linkedin/leads'),
+      api('os', '/api/analytics').catch(() => null),
+    ]);
+    liLeads = leadsRes.leads || [];
+
+    const s = statsRes?.linkedin;
+    document.getElementById('li-total').textContent    = s?.total ?? liLeads.length;
+    document.getElementById('li-sent').textContent     = s?.sent ?? liLeads.filter(l => l.status === 'sent').length;
+    document.getElementById('li-accepted').textContent = s?.accepted ?? liLeads.filter(l => l.status === 'accepted').length;
+    document.getElementById('li-rate').textContent     = (s?.accept_rate ?? 0) + '%';
+    document.getElementById('badge-li').textContent    = liLeads.filter(l => l.status === 'note_generated').length;
+
+    renderLiList();
+  } catch (e) {
+    document.getElementById('li-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+function renderLiList() {
+  const filtered = liFilter === 'all' ? liLeads : liLeads.filter(l => l.status === liFilter);
+  const el = document.getElementById('li-list');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div>No LinkedIn leads — use the search above to find decision makers</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(l => `
+    <div class="card${l.status === 'accepted' || l.status === 'replied' ? ' warm' : ''}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(l.contact_name || '(Unknown)')}</div>
+          <div class="card-subtitle">${esc(l.title || '')} · ${esc(l.clinic_name)} · ${esc(l.area || '')}</div>
+        </div>
+        ${badge(l.status)}
+      </div>
+      ${l.linkedin_url ? `<div style="margin-bottom:8px"><a href="${esc(l.linkedin_url)}" target="_blank" style="color:var(--blue);font-size:13px">🔗 ${esc(l.linkedin_url)}</a></div>` : ''}
+      ${l.connection_note ? `<div class="text-box">${esc(l.connection_note)}</div>` : ''}
+      <div class="card-actions">
+        ${l.connection_note ? `<button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.connection_note)}, "Note copied")'>📋 Copy Note</button>` : ''}
+        ${l.status === 'note_generated' ? `<button class="btn btn-primary btn-sm" onclick="liSetStatus('${l.id}','sent')">✓ Mark Sent</button>` : ''}
+        ${l.status === 'sent' ? `<button class="btn btn-success btn-sm" onclick="liSetStatus('${l.id}','accepted')">✅ Mark Accepted</button>` : ''}
+        ${l.status === 'accepted' ? `<button class="btn btn-success btn-sm" onclick="liSetStatus('${l.id}','replied')">💬 Mark Replied</button>` : ''}
+        <input class="notes-input" placeholder="Notes…" value="${esc(l.notes || '')}" onblur="liSaveNotes('${l.id}',this.value)" onkeydown="if(event.key==='Enter'){liSaveNotes('${l.id}',this.value);this.blur()}">
+        <span style="font-size:11px;color:var(--muted)">${fmtDate(l.found_at)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function liSetStatus(id, status) {
+  try {
+    await api('os', `/api/linkedin/leads/${id}/status`, 'PUT', { status });
+    toast('Updated', 'success');
+    loadLinkedIn();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function liSaveNotes(id, notes) {
+  try { await api('os', `/api/linkedin/leads/${id}/notes`, 'PUT', { notes }); } catch {}
+}
+
+async function findLinkedIn() {
+  const input = document.getElementById('li-clinic-input');
+  const name = input.value.trim();
+  if (!name) { toast('Enter a clinic name', 'error'); return; }
+  const btn = document.querySelector('#page-linkedin .btn-primary');
+  btn.disabled = true;
+  btn.textContent = '⏳ Searching…';
+  try {
+    const r = await api('os', '/api/linkedin/find', 'POST', { clinic_name: name });
+    toast(`Found: ${r.lead.contact_name || 'Generated note'}`, 'success');
+    input.value = '';
+    loadLinkedIn();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '🔍 Find Decision Maker'; }
+}
+
+// ── Warm Leads ────────────────────────────────────────────────────────────
+async function loadWarm() {
+  document.getElementById('warm-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [emailRes, igRes, liRes] = await Promise.all([
+      api('email', '/api/warm-leads').catch(() => ({ leads: [] })),
+      api('os', '/api/instagram/leads?status=warm').catch(() => ({ leads: [] })),
+      api('os', '/api/linkedin/leads?status=replied').catch(() => ({ leads: [] })),
+    ]);
+
+    const emailWarm = (emailRes.leads || []).map(l => ({ ...l, _channel: 'email', _title: l.clinic_name || l.name, _sub: l.email || '' }));
+    const igWarm    = (igRes.leads   || []).map(l => ({ ...l, _channel: 'instagram', _title: l.handle, _sub: l.clinic_name || '' }));
+    const liWarm    = (liRes.leads   || []).map(l => ({ ...l, _channel: 'linkedin', _title: l.contact_name || l.clinic_name, _sub: l.title || '' }));
+    const all = [...emailWarm, ...igWarm, ...liWarm];
+
+    document.getElementById('warm-total').textContent = all.length;
+    document.getElementById('warm-email').textContent = emailWarm.length;
+    document.getElementById('warm-ig').textContent    = igWarm.length;
+    document.getElementById('warm-li').textContent    = liWarm.length;
+    document.getElementById('badge-warm').textContent = all.length;
+
+    const el = document.getElementById('warm-list');
+    if (!all.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔥</div>No warm leads yet</div>';
+      return;
+    }
+    el.innerHTML = all.map(l => `
+      <div class="card warm">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${esc(l._title)}</div>
+            <div class="card-subtitle">${esc(l._sub)}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="channel-tag channel-${l._channel}">${l._channel}</span>
+            ${badge(l.status)}
+          </div>
+        </div>
+        ${l.reply_text || l.reply ? `<div class="text-box" style="border-left:3px solid var(--green)">${esc(l.reply_text || l.reply)}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">${fmtDate(l.replied_at || l.accepted_at || l.updated_at)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('warm-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  const el = document.getElementById('analytics-content');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [emailMetrics, osAnalytics] = await Promise.all([
+      api('email', '/api/metrics').catch(() => null),
+      api('os', '/api/analytics').catch(() => null),
+    ]);
+
+    const em = emailMetrics || {};
+    const ig = osAnalytics?.instagram || {};
+    const li = osAnalytics?.linkedin || {};
+
+    el.innerHTML = `
+      <div class="analytics-card">
+        <div class="analytics-card-title">✉️ Email</div>
+        <div class="analytics-row"><span class="analytics-row-label">Total Leads</span><span class="analytics-row-value">${em.total_leads ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Approved</span><span class="analytics-row-value">${em.approved ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Sent</span><span class="analytics-row-value">${em.sent ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Warm Leads</span><span class="analytics-row-value" style="color:var(--green)">${em.warm ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Reply Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${em.reply_rate != null ? em.reply_rate + '%' : '–'}</span></div>
+      </div>
+      <div class="analytics-card">
+        <div class="analytics-card-title">📸 Instagram</div>
+        <div class="analytics-row"><span class="analytics-row-label">Handles Found</span><span class="analytics-row-value">${ig.total ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">DMs Sent</span><span class="analytics-row-value">${ig.dm_sent ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Replied</span><span class="analytics-row-value" style="color:var(--green)">${ig.replied ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Warm</span><span class="analytics-row-value" style="color:var(--green)">${ig.warm ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Reply Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${ig.reply_rate != null ? ig.reply_rate + '%' : '–'}</span></div>
+      </div>
+      <div class="analytics-card">
+        <div class="analytics-card-title">💼 LinkedIn</div>
+        <div class="analytics-row"><span class="analytics-row-label">Total</span><span class="analytics-row-value">${li.total ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Requests Sent</span><span class="analytics-row-value">${li.sent ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Accepted</span><span class="analytics-row-value" style="color:var(--green)">${li.accepted ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Replied</span><span class="analytics-row-value" style="color:var(--green)">${li.replied ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Accept Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${li.accept_rate != null ? li.accept_rate + '%' : '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Reply Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${li.reply_rate != null ? li.reply_rate + '%' : '–'}</span></div>
+      </div>
+      <div class="analytics-card">
+        <div class="analytics-card-title">📊 Combined</div>
+        ${(() => {
+          const totalSent = (em.sent || 0) + (ig.dm_sent || 0) + (li.sent || 0);
+          const totalWarm = (em.warm || 0) + (ig.warm || 0) + (li.replied || 0);
+          const combined = totalSent > 0 ? Math.round((totalWarm / totalSent) * 100) : 0;
+          return `
+            <div class="analytics-row"><span class="analytics-row-label">Total Outreach</span><span class="analytics-row-value">${totalSent}</span></div>
+            <div class="analytics-row"><span class="analytics-row-label">Total Warm</span><span class="analytics-row-value" style="color:var(--green)">${totalWarm}</span></div>
+            <div class="analytics-row"><span class="analytics-row-label">Combined Reply Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${combined}%</span></div>
+          `;
+        })()}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+// ── XSS guard ─────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadCfg();
+loadEmail();
+</script>
+</body>
+</html>
