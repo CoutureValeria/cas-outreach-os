@@ -1,0 +1,8 @@
+backups/
+.env
+*.log
+node_modules/
+.claude/
+backend/
+frontend/
+database/
