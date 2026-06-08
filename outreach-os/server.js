@@ -5,7 +5,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const instagramService = require('./services/instagramService');
-const linkedinService = require('./services/linkedinService');
+const linkedinService  = require('./services/linkedinService');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -33,8 +33,7 @@ app.get('/health', (req, res) => {
 // ── Instagram ─────────────────────────────────────────────────────────────
 app.get('/api/instagram/leads', auth, async (req, res) => {
   try {
-    const { status } = req.query;
-    const leads = await instagramService.getLeads(status);
+    const leads = await instagramService.getLeads(req.query.status);
     res.json({ leads });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -75,20 +74,30 @@ app.put('/api/instagram/leads/:id/notes', auth, async (req, res) => {
 // ── LinkedIn ──────────────────────────────────────────────────────────────
 app.get('/api/linkedin/leads', auth, async (req, res) => {
   try {
-    const { status } = req.query;
-    const leads = await linkedinService.getLeads(status);
+    const leads = await linkedinService.getLeads(req.query.status);
     res.json({ leads });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Find decision maker for a single clinic (manual lookup)
 app.post('/api/linkedin/find', auth, async (req, res) => {
   try {
-    const { clinic_name, area } = req.body;
+    const { clinic_name, area, lead_id, research_notes, primary_pain } = req.body;
     if (!clinic_name) return res.status(400).json({ error: 'clinic_name required' });
-    const lead = await linkedinService.findDecisionMaker(clinic_name, area);
+    const lead = await linkedinService.findDecisionMaker({ id: lead_id, clinic_name, area, research_notes, primary_pain });
     res.json({ lead });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk: find decision makers for all email engine leads missing a LinkedIn row
+app.post('/api/linkedin/find-all', auth, async (req, res) => {
+  try {
+    const found = await linkedinService.findAllDecisionMakers();
+    res.json({ found: found.length, leads: found });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -96,10 +105,10 @@ app.post('/api/linkedin/find', auth, async (req, res) => {
 
 app.put('/api/linkedin/leads/:id/status', auth, async (req, res) => {
   try {
-    const { status } = req.body;
-    const VALID = ['new', 'note_generated', 'sent', 'accepted', 'replied', 'not_interested'];
+    const { status, reply_text } = req.body;
+    const VALID = ['new', 'request_sent', 'connected', 'replied', 'not_interested'];
     if (!VALID.includes(status)) return res.status(400).json({ error: 'Invalid status' });
-    const lead = await linkedinService.updateStatus(req.params.id, status);
+    const lead = await linkedinService.updateStatus(req.params.id, status, reply_text);
     res.json({ lead });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -118,9 +127,35 @@ app.put('/api/linkedin/leads/:id/notes', auth, async (req, res) => {
 // ── Analytics ─────────────────────────────────────────────────────────────
 app.get('/api/analytics', auth, async (req, res) => {
   try {
-    const ig = await instagramService.getStats();
-    const li = await linkedinService.getStats();
+    const [ig, li] = await Promise.all([instagramService.getStats(), linkedinService.getStats()]);
     res.json({ instagram: ig, linkedin: li });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Daily action queue ────────────────────────────────────────────────────
+// Returns counts for sidebar badges without loading full lead data
+app.get('/api/queue/counts', auth, async (req, res) => {
+  try {
+    const [igNew, liNew, liConn] = await Promise.all([
+      instagramService.getLeads('new'),
+      linkedinService.getLeads('new'),
+      linkedinService.getLeads('connected'),
+    ]);
+
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const liFollowUp = liConn.filter(l => {
+      const ts = l.accepted_at || l.found_at;
+      return ts && new Date(ts).getTime() < threeDaysAgo;
+    });
+
+    res.json({
+      ig_new:        igNew.length,
+      li_new:        liNew.length,
+      li_follow_up:  liFollowUp.length,
+      total:         igNew.length + liNew.length + liFollowUp.length,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

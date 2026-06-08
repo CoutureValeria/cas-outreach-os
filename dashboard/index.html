@@ -42,6 +42,7 @@
   .nav-item.active { color: var(--text); background: var(--surface2); border-left-color: var(--accent); }
   .nav-icon { font-size: 15px; width: 18px; text-align: center; }
   .nav-badge { margin-left: auto; background: var(--accent-dim); color: var(--accent); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+  .nav-badge.urgent { background: var(--yellow-dim); color: var(--yellow); }
   .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
   .btn-settings { background: none; border: 1px solid var(--border); color: var(--muted); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; width: 100%; text-align: center; transition: color 0.15s, border-color 0.15s; }
   .btn-settings:hover { color: var(--text); border-color: var(--accent); }
@@ -88,7 +89,7 @@
   .card-title { font-weight: 600; font-size: 14px; }
   .card-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
 
   .text-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; font-family: var(--font); margin: 8px 0; }
 
@@ -128,6 +129,10 @@
   .notes-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 4px 8px; font-size: 12px; font-family: var(--font); width: 160px; resize: none; height: 32px; }
   .notes-input:focus { outline: 1px solid var(--accent); }
 
+  .reply-inline { display: flex; gap: 6px; align-items: flex-start; margin-top: 8px; }
+  .reply-textarea { flex: 1; background: var(--surface2); border: 1px solid var(--accent); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 13px; font-family: var(--font); resize: vertical; min-height: 60px; }
+  .reply-textarea:focus { outline: none; border-color: var(--green); }
+
   .channel-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
   .channel-email { background: var(--accent-dim); color: var(--accent); }
   .channel-instagram { background: var(--pink-dim); color: var(--pink); }
@@ -141,9 +146,15 @@
   .analytics-row-label { font-size: 13px; color: var(--muted); }
   .analytics-row-value { font-size: 14px; font-weight: 600; }
 
-  .linkedin-find-row { display: flex; gap: 8px; margin-bottom: 20px; }
-  .linkedin-find-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: var(--font); }
-  .linkedin-find-input:focus { outline: 1px solid var(--accent); }
+  .queue-section { margin-bottom: 28px; }
+  .queue-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .queue-section-title .count-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: 11px; color: var(--text); }
+  .queue-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+  .queue-card:hover { border-color: var(--accent); }
+  .queue-card-body { flex: 1; min-width: 0; }
+  .queue-card-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
   .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
   .dot-green { background: var(--green); }
@@ -170,7 +181,12 @@
       <div class="logo-sub logo-title">Unified Outreach Dashboard</div>
     </div>
     <nav class="nav">
-      <div class="nav-item active" data-tab="email">
+      <div class="nav-item active" data-tab="queue">
+        <span class="nav-icon">⚡</span>
+        <span>Today's Queue</span>
+        <span class="nav-badge urgent" id="badge-queue">0</span>
+      </div>
+      <div class="nav-item" data-tab="email">
         <span class="nav-icon">✉️</span>
         <span>Email Queue</span>
         <span class="nav-badge" id="badge-email">0</span>
@@ -203,8 +219,22 @@
   <!-- Main -->
   <main class="main">
 
+    <!-- Daily Action Queue -->
+    <div class="page active" id="page-queue">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Today's Queue</h1>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Everything needing action — 5-minute daily session</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadQueue()">↻ Refresh</button>
+        </div>
+      </div>
+      <div id="queue-content"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
     <!-- Email Queue -->
-    <div class="page active" id="page-email">
+    <div class="page" id="page-email">
       <div class="page-header">
         <h1 class="page-title">Email Queue</h1>
         <div class="page-actions">
@@ -212,7 +242,7 @@
           <button class="btn btn-primary btn-sm" onclick="sendNext()">▶ Send Next</button>
         </div>
       </div>
-      <div class="metrics" id="email-metrics">
+      <div class="metrics">
         <div class="metric-card accent"><div class="metric-value" id="em-approved">–</div><div class="metric-label">Approved</div></div>
         <div class="metric-card"><div class="metric-value" id="em-sent">–</div><div class="metric-label">Sent</div></div>
         <div class="metric-card green"><div class="metric-value" id="em-warm">–</div><div class="metric-label">Warm</div></div>
@@ -233,7 +263,7 @@
         <h1 class="page-title">Instagram</h1>
         <div class="page-actions">
           <button class="btn btn-ghost btn-sm" onclick="loadInstagram()">↻ Refresh</button>
-          <button class="btn btn-primary btn-sm" onclick="findIgHandles()">🔍 Find Handles</button>
+          <button class="btn btn-primary btn-sm" id="btn-ig-find" onclick="findIgHandles()">🔍 Find Handles</button>
         </div>
       </div>
       <div class="metrics">
@@ -258,23 +288,20 @@
         <h1 class="page-title">LinkedIn</h1>
         <div class="page-actions">
           <button class="btn btn-ghost btn-sm" onclick="loadLinkedIn()">↻ Refresh</button>
+          <button class="btn btn-primary btn-sm" id="btn-li-find" onclick="findAllDecisionMakers()">🔍 Find Decision Makers</button>
         </div>
       </div>
       <div class="metrics">
         <div class="metric-card"><div class="metric-value" id="li-total">–</div><div class="metric-label">Total</div></div>
         <div class="metric-card blue"><div class="metric-value" id="li-sent">–</div><div class="metric-label">Requests Sent</div></div>
-        <div class="metric-card green"><div class="metric-value" id="li-accepted">–</div><div class="metric-label">Accepted</div></div>
+        <div class="metric-card green"><div class="metric-value" id="li-accepted">–</div><div class="metric-label">Connected</div></div>
         <div class="metric-card yellow"><div class="metric-value" id="li-rate">–</div><div class="metric-label">Accept Rate</div></div>
-      </div>
-      <div class="linkedin-find-row">
-        <input class="linkedin-find-input" id="li-clinic-input" placeholder="Clinic name (e.g. Södermalms Djurklinik)" onkeydown="if(event.key==='Enter')findLinkedIn()">
-        <button class="btn btn-primary" onclick="findLinkedIn()">🔍 Find Decision Maker</button>
       </div>
       <div class="filter-row">
         <button class="filter-btn active" data-filter="all" onclick="setLiFilter(this,'all')">All</button>
-        <button class="filter-btn" data-filter="note_generated" onclick="setLiFilter(this,'note_generated')">Ready</button>
-        <button class="filter-btn" data-filter="sent" onclick="setLiFilter(this,'sent')">Sent</button>
-        <button class="filter-btn" data-filter="accepted" onclick="setLiFilter(this,'accepted')">Accepted</button>
+        <button class="filter-btn" data-filter="new" onclick="setLiFilter(this,'new')">New</button>
+        <button class="filter-btn" data-filter="request_sent" onclick="setLiFilter(this,'request_sent')">Sent</button>
+        <button class="filter-btn" data-filter="connected" onclick="setLiFilter(this,'connected')">Connected</button>
         <button class="filter-btn" data-filter="replied" onclick="setLiFilter(this,'replied')">Replied</button>
       </div>
       <div id="li-list"><div class="loading"><span class="spinner"></span></div></div>
@@ -341,7 +368,6 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────
-const CFG_KEYS = ['email-url', 'email-key', 'os-url', 'os-key'];
 let cfg = {};
 
 function loadCfg() {
@@ -383,14 +409,13 @@ function saveSettings() {
 
 async function testConnections() {
   loadCfg();
-  let ok = 0;
   try {
     const r = await fetch(cfg.emailUrl + '/health', { headers: emailHeaders() });
-    if (r.ok) { ok++; toast('Email Engine: connected', 'success'); } else toast('Email Engine: ' + r.status, 'error');
+    if (r.ok) toast('Email Engine: connected', 'success'); else toast('Email Engine: ' + r.status, 'error');
   } catch { toast('Email Engine: unreachable', 'error'); }
   try {
     const r = await fetch(cfg.osUrl + '/health');
-    if (r.ok) { ok++; toast('Outreach OS: connected', 'success'); } else toast('Outreach OS: ' + r.status, 'error');
+    if (r.ok) toast('Outreach OS: connected', 'success'); else toast('Outreach OS: ' + r.status, 'error');
   } catch { toast('Outreach OS: unreachable', 'error'); }
 }
 
@@ -431,7 +456,7 @@ function copyToClipboard(text, label = 'Copied') {
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────
-let activeTab = 'email';
+let activeTab = 'queue';
 
 document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => {
@@ -446,10 +471,11 @@ document.querySelectorAll('.nav-item').forEach(el => {
 });
 
 function refreshCurrentTab() {
-  if (activeTab === 'email') loadEmail();
+  if (activeTab === 'queue')     loadQueue();
+  else if (activeTab === 'email')    loadEmail();
   else if (activeTab === 'instagram') loadInstagram();
-  else if (activeTab === 'linkedin') loadLinkedIn();
-  else if (activeTab === 'warm') loadWarm();
+  else if (activeTab === 'linkedin')  loadLinkedIn();
+  else if (activeTab === 'warm')      loadWarm();
   else if (activeTab === 'analytics') loadAnalytics();
 }
 
@@ -457,19 +483,185 @@ function refreshCurrentTab() {
 const STATUS_BADGES = {
   new: 'badge-muted', approved: 'badge-accent', sent: 'badge-blue',
   warm: 'badge-green', replied: 'badge-green', dm_sent: 'badge-pink',
-  note_generated: 'badge-accent', accepted: 'badge-green',
+  request_sent: 'badge-blue', connected: 'badge-green',
   not_interested: 'badge-muted', opted_out: 'badge-red',
   no_response: 'badge-muted', bounced: 'badge-red', skipped: 'badge-muted',
 };
 
 function badge(status) {
   const cls = STATUS_BADGES[status] || 'badge-muted';
-  return `<span class="badge ${cls}">${status}</span>`;
+  const label = status === 'request_sent' ? 'sent' : status === 'connected' ? 'connected' : status;
+  return `<span class="badge ${cls}">${label}</span>`;
 }
 
 function fmtDate(d) {
   if (!d) return '–';
   return new Date(d).toLocaleDateString('sv-SE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function daysSince(d) {
+  if (!d) return 999;
+  return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+}
+
+// ── Daily Action Queue ────────────────────────────────────────────────────
+async function loadQueue() {
+  const el = document.getElementById('queue-content');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    const [igRes, liRes] = await Promise.all([
+      api('os', '/api/instagram/leads?status=new').catch(() => ({ leads: [] })),
+      api('os', '/api/linkedin/leads').catch(() => ({ leads: [] })),
+    ]);
+
+    const igNew = (igRes.leads || []);
+    const liAll = (liRes.leads || []);
+    const liNew = liAll.filter(l => l.status === 'new');
+    const liFollowUp = liAll.filter(l => l.status === 'connected' && daysSince(l.accepted_at || l.found_at) >= 3);
+
+    const total = igNew.length + liNew.length + liFollowUp.length;
+    document.getElementById('badge-queue').textContent = total;
+
+    if (total === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">All done for today</div>
+        <div style="color:var(--muted)">No pending actions. Check back tomorrow.</div>
+      </div>`;
+      return;
+    }
+
+    const IG_DM = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
+
+    let html = '';
+
+    if (igNew.length) {
+      html += `<div class="queue-section">
+        <div class="queue-section-title">
+          <span class="channel-tag channel-instagram">Instagram</span>
+          New handles to DM
+          <span class="count-pill">${igNew.length}</span>
+        </div>`;
+      for (const l of igNew) {
+        html += `<div class="queue-card">
+          <div class="queue-card-body">
+            <div class="queue-card-title">${esc(l.handle)}</div>
+            <div class="queue-card-sub">${esc(l.clinic_name || '')} · ${esc(l.area || '')}</div>
+          </div>
+          <div class="queue-card-actions">
+            <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.handle)}, "Handle copied")'>📋 Copy @</button>
+            <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(IG_DM)}, "DM copied")'>💬 Copy DM</button>
+            <button class="btn btn-sm" style="background:var(--pink);color:#fff" onclick="queueIgSent('${l.id}', this)">✓ Sent</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (liNew.length) {
+      html += `<div class="queue-section">
+        <div class="queue-section-title">
+          <span class="channel-tag channel-linkedin">LinkedIn</span>
+          Connection requests to send
+          <span class="count-pill">${liNew.length}</span>
+        </div>`;
+      for (const l of liNew) {
+        html += `<div class="queue-card">
+          <div class="queue-card-body">
+            <div class="queue-card-title">${esc(l.contact_name || '(Unknown person)')} · ${esc(l.clinic_name)}</div>
+            <div class="queue-card-sub">${esc(l.title || '')} · ${esc(l.area || '')}</div>
+          </div>
+          <div class="queue-card-actions">
+            ${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" class="btn btn-ghost btn-sm">🔗 Open</a>` : ''}
+            ${l.connection_note ? `<button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.connection_note)}, "Note copied")'>📋 Copy Note</button>` : ''}
+            <button class="btn btn-primary btn-sm" onclick="queueLiSent('${l.id}', this)">✓ Sent</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (liFollowUp.length) {
+      html += `<div class="queue-section">
+        <div class="queue-section-title">
+          <span class="channel-tag channel-linkedin">LinkedIn</span>
+          Connected — follow up (3+ days)
+          <span class="count-pill">${liFollowUp.length}</span>
+        </div>`;
+      for (const l of liFollowUp) {
+        const days = daysSince(l.accepted_at || l.found_at);
+        html += `<div class="queue-card">
+          <div class="queue-card-body">
+            <div class="queue-card-title">${esc(l.contact_name || '(Unknown person)')} · ${esc(l.clinic_name)}</div>
+            <div class="queue-card-sub">${esc(l.title || '')} · connected ${days}d ago</div>
+          </div>
+          <div class="queue-card-actions">
+            ${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" class="btn btn-ghost btn-sm">🔗 Open</a>` : ''}
+            <button class="btn btn-success btn-sm" onclick="queueLiReplied('${l.id}', this)">💬 Replied</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+  }
+}
+
+async function queueIgSent(id, btn) {
+  btn.disabled = true;
+  try {
+    await api('os', `/api/instagram/leads/${id}/status`, 'PUT', { status: 'dm_sent' });
+    toast('Marked as DM sent', 'success');
+    btn.closest('.queue-card').remove();
+    updateQueueBadge(-1);
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function queueLiSent(id, btn) {
+  btn.disabled = true;
+  try {
+    await api('os', `/api/linkedin/leads/${id}/status`, 'PUT', { status: 'request_sent' });
+    toast('Request marked as sent', 'success');
+    btn.closest('.queue-card').remove();
+    updateQueueBadge(-1);
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+async function queueLiReplied(id, btn) {
+  const card = btn.closest('.queue-card');
+  const existing = card.querySelector('.reply-inline');
+  if (existing) { existing.remove(); return; }
+
+  const div = document.createElement('div');
+  div.className = 'reply-inline';
+  div.style.cssText = 'margin-top:10px;width:100%';
+  div.innerHTML = `
+    <textarea class="reply-textarea" placeholder="Paste their reply here (optional)…"></textarea>
+    <button class="btn btn-success btn-sm" onclick="submitQueueLiReplied('${id}', this)">Save</button>
+  `;
+  card.appendChild(div);
+  div.querySelector('textarea').focus();
+}
+
+async function submitQueueLiReplied(id, btn) {
+  const textarea = btn.parentElement.querySelector('textarea');
+  const reply_text = textarea.value.trim();
+  btn.disabled = true;
+  try {
+    await api('os', `/api/linkedin/leads/${id}/status`, 'PUT', { status: 'replied', reply_text });
+    toast('Marked as replied', 'success');
+    btn.closest('.queue-card').remove();
+    updateQueueBadge(-1);
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+function updateQueueBadge(delta) {
+  const badge = document.getElementById('badge-queue');
+  const current = parseInt(badge.textContent) || 0;
+  badge.textContent = Math.max(0, current + delta);
 }
 
 // ── Email Queue ───────────────────────────────────────────────────────────
@@ -493,12 +685,12 @@ async function loadEmail() {
     emailLeads = leadsRes.leads || leadsRes || [];
 
     const approved = emailLeads.filter(l => l.status === 'approved').length;
-    const sent = emailLeads.filter(l => l.status === 'sent').length;
-    const warm = emailLeads.filter(l => l.status === 'warm').length;
+    const sent     = emailLeads.filter(l => l.status === 'sent').length;
+    const warm     = emailLeads.filter(l => l.status === 'warm').length;
 
     document.getElementById('em-approved').textContent = approved;
-    document.getElementById('em-sent').textContent = sent;
-    document.getElementById('em-warm').textContent = warm;
+    document.getElementById('em-sent').textContent     = sent;
+    document.getElementById('em-warm').textContent     = warm;
     document.getElementById('badge-email').textContent = approved;
 
     if (metricsRes) {
@@ -562,7 +754,9 @@ async function sendNext() {
 
 // ── Instagram ─────────────────────────────────────────────────────────────
 let igFilter = 'new';
-let igLeads = [];
+let igLeads  = [];
+
+const IG_DM = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
 
 function setIgFilter(btn, f) {
   document.querySelectorAll('#page-instagram .filter-btn').forEach(b => b.classList.remove('active'));
@@ -581,19 +775,17 @@ async function loadInstagram() {
     igLeads = leadsRes.leads || [];
 
     const s = statsRes?.instagram;
-    document.getElementById('ig-total').textContent = s?.total ?? igLeads.length;
-    document.getElementById('ig-sent').textContent  = s?.dm_sent ?? igLeads.filter(l => l.status === 'dm_sent').length;
+    document.getElementById('ig-total').textContent   = s?.total   ?? igLeads.length;
+    document.getElementById('ig-sent').textContent    = s?.dm_sent ?? igLeads.filter(l => l.status === 'dm_sent').length;
     document.getElementById('ig-replied').textContent = s?.replied ?? igLeads.filter(l => l.status === 'replied' || l.status === 'warm').length;
-    document.getElementById('ig-rate').textContent  = (s?.reply_rate ?? 0) + '%';
-    document.getElementById('badge-ig').textContent = igLeads.filter(l => l.status === 'new').length;
+    document.getElementById('ig-rate').textContent    = (s?.reply_rate ?? 0) + '%';
+    document.getElementById('badge-ig').textContent   = igLeads.filter(l => l.status === 'new').length;
 
     renderIgList();
   } catch (e) {
     document.getElementById('ig-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>${e.message}</div>`;
   }
 }
-
-const IG_DM = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
 
 function renderIgList() {
   const filtered = igFilter === 'all' ? igLeads : igLeads.filter(l => l.status === igFilter);
@@ -603,7 +795,7 @@ function renderIgList() {
     return;
   }
   el.innerHTML = filtered.map(l => `
-    <div class="card${l.status === 'warm' ? ' warm' : ''}">
+    <div class="card${l.status === 'warm' ? ' warm' : ''}" id="ig-card-${l.id}">
       <div class="card-header">
         <div>
           <div class="card-title">${esc(l.handle)}</div>
@@ -613,15 +805,39 @@ function renderIgList() {
       </div>
       ${l.reply_text ? `<div class="text-box" style="border-left:3px solid var(--green)">${esc(l.reply_text)}</div>` : ''}
       <div class="card-actions">
-        <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(IG_DM)}, "DM copied")'>📋 Copy DM</button>
-        ${l.status === 'new' ? `<button class="btn btn-sm" style="background:var(--pink);color:#fff" onclick="igSetStatus('${l.id}','dm_sent')">✓ Mark Sent</button>` : ''}
-        ${l.status === 'dm_sent' ? `<button class="btn btn-success btn-sm" onclick="igMarkReplied('${l.id}')">💬 Mark Replied</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.handle)}, "Handle copied")'>📋 Copy Handle</button>
+        <button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(IG_DM)}, "DM copied")'>💬 Copy DM</button>
+        ${l.status === 'new'     ? `<button class="btn btn-sm" style="background:var(--pink);color:#fff" onclick="igSetStatus('${l.id}','dm_sent')">✓ Mark Sent</button>` : ''}
+        ${l.status === 'dm_sent' ? `<button class="btn btn-success btn-sm" onclick="igShowReply('${l.id}')">💬 Mark Replied</button>` : ''}
         ${l.status === 'replied' ? `<button class="btn btn-success btn-sm" onclick="igSetStatus('${l.id}','warm')">🔥 Mark Warm</button>` : ''}
         <input class="notes-input" placeholder="Notes…" value="${esc(l.notes || '')}" onblur="igSaveNotes('${l.id}', this.value)" onkeydown="if(event.key==='Enter'){igSaveNotes('${l.id}',this.value);this.blur()}">
         <span style="font-size:11px;color:var(--muted)">${fmtDate(l.found_at)}</span>
       </div>
+      <div id="ig-reply-${l.id}" style="display:none;margin-top:10px">
+        <div class="reply-inline">
+          <textarea class="reply-textarea" placeholder="Paste their reply here (optional)…"></textarea>
+          <button class="btn btn-success btn-sm" onclick="igSubmitReply('${l.id}', this)">Save</button>
+        </div>
+      </div>
     </div>
   `).join('');
+}
+
+function igShowReply(id) {
+  const box = document.getElementById('ig-reply-' + id);
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') box.querySelector('textarea').focus();
+}
+
+async function igSubmitReply(id, btn) {
+  const textarea = btn.parentElement.querySelector('textarea');
+  const reply_text = textarea.value.trim();
+  btn.disabled = true;
+  try {
+    await api('os', `/api/instagram/leads/${id}/status`, 'PUT', { status: 'replied', reply_text });
+    toast('Marked replied', 'success');
+    loadInstagram();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
 
 async function igSetStatus(id, status) {
@@ -632,21 +848,12 @@ async function igSetStatus(id, status) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-function igMarkReplied(id) {
-  const text = prompt('Reply text (optional):') ?? '';
-  api('os', `/api/instagram/leads/${id}/status`, 'PUT', { status: 'replied', reply_text: text })
-    .then(() => { toast('Marked replied', 'success'); loadInstagram(); })
-    .catch(e => toast(e.message, 'error'));
-}
-
 async function igSaveNotes(id, notes) {
-  try {
-    await api('os', `/api/instagram/leads/${id}/notes`, 'PUT', { notes });
-  } catch {}
+  try { await api('os', `/api/instagram/leads/${id}/notes`, 'PUT', { notes }); } catch {}
 }
 
 async function findIgHandles() {
-  const btn = document.querySelector('#page-instagram .page-actions .btn-primary');
+  const btn = document.getElementById('btn-ig-find');
   btn.disabled = true;
   btn.textContent = '⏳ Searching…';
   try {
@@ -659,7 +866,7 @@ async function findIgHandles() {
 
 // ── LinkedIn ──────────────────────────────────────────────────────────────
 let liFilter = 'all';
-let liLeads = [];
+let liLeads  = [];
 
 function setLiFilter(btn, f) {
   document.querySelectorAll('#page-linkedin .filter-btn').forEach(b => b.classList.remove('active'));
@@ -678,11 +885,11 @@ async function loadLinkedIn() {
     liLeads = leadsRes.leads || [];
 
     const s = statsRes?.linkedin;
-    document.getElementById('li-total').textContent    = s?.total ?? liLeads.length;
-    document.getElementById('li-sent').textContent     = s?.sent ?? liLeads.filter(l => l.status === 'sent').length;
-    document.getElementById('li-accepted').textContent = s?.accepted ?? liLeads.filter(l => l.status === 'accepted').length;
+    document.getElementById('li-total').textContent    = s?.total        ?? liLeads.length;
+    document.getElementById('li-sent').textContent     = s?.request_sent ?? liLeads.filter(l => l.status === 'request_sent').length;
+    document.getElementById('li-accepted').textContent = s?.connected    ?? liLeads.filter(l => l.status === 'connected').length;
     document.getElementById('li-rate').textContent     = (s?.accept_rate ?? 0) + '%';
-    document.getElementById('badge-li').textContent    = liLeads.filter(l => l.status === 'note_generated').length;
+    document.getElementById('badge-li').textContent    = liLeads.filter(l => l.status === 'new').length;
 
     renderLiList();
   } catch (e) {
@@ -694,11 +901,11 @@ function renderLiList() {
   const filtered = liFilter === 'all' ? liLeads : liLeads.filter(l => l.status === liFilter);
   const el = document.getElementById('li-list');
   if (!filtered.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div>No LinkedIn leads — use the search above to find decision makers</div>';
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div>No LinkedIn leads — click Find Decision Makers to search</div>';
     return;
   }
   el.innerHTML = filtered.map(l => `
-    <div class="card${l.status === 'accepted' || l.status === 'replied' ? ' warm' : ''}">
+    <div class="card${l.status === 'connected' || l.status === 'replied' ? ' warm' : ''}">
       <div class="card-header">
         <div>
           <div class="card-title">${esc(l.contact_name || '(Unknown)')}</div>
@@ -708,16 +915,41 @@ function renderLiList() {
       </div>
       ${l.linkedin_url ? `<div style="margin-bottom:8px"><a href="${esc(l.linkedin_url)}" target="_blank" style="color:var(--blue);font-size:13px">🔗 ${esc(l.linkedin_url)}</a></div>` : ''}
       ${l.connection_note ? `<div class="text-box">${esc(l.connection_note)}</div>` : ''}
+      ${l.reply_text ? `<div class="text-box" style="border-left:3px solid var(--green);margin-top:6px">${esc(l.reply_text)}</div>` : ''}
       <div class="card-actions">
+        ${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" class="btn btn-ghost btn-sm">🔗 Open Profile</a>` : ''}
         ${l.connection_note ? `<button class="btn btn-ghost btn-sm" onclick='copyToClipboard(${JSON.stringify(l.connection_note)}, "Note copied")'>📋 Copy Note</button>` : ''}
-        ${l.status === 'note_generated' ? `<button class="btn btn-primary btn-sm" onclick="liSetStatus('${l.id}','sent')">✓ Mark Sent</button>` : ''}
-        ${l.status === 'sent' ? `<button class="btn btn-success btn-sm" onclick="liSetStatus('${l.id}','accepted')">✅ Mark Accepted</button>` : ''}
-        ${l.status === 'accepted' ? `<button class="btn btn-success btn-sm" onclick="liSetStatus('${l.id}','replied')">💬 Mark Replied</button>` : ''}
+        ${l.status === 'new'          ? `<button class="btn btn-primary btn-sm" onclick="liSetStatus('${l.id}','request_sent')">✓ Mark Sent</button>` : ''}
+        ${l.status === 'request_sent' ? `<button class="btn btn-success btn-sm" onclick="liSetStatus('${l.id}','connected')">✅ Mark Accepted</button>` : ''}
+        ${l.status === 'connected'    ? `<button class="btn btn-success btn-sm" onclick="liShowReply('${l.id}')">💬 Mark Replied</button>` : ''}
         <input class="notes-input" placeholder="Notes…" value="${esc(l.notes || '')}" onblur="liSaveNotes('${l.id}',this.value)" onkeydown="if(event.key==='Enter'){liSaveNotes('${l.id}',this.value);this.blur()}">
         <span style="font-size:11px;color:var(--muted)">${fmtDate(l.found_at)}</span>
       </div>
+      <div id="li-reply-${l.id}" style="display:none;margin-top:10px">
+        <div class="reply-inline">
+          <textarea class="reply-textarea" placeholder="Paste their reply here…"></textarea>
+          <button class="btn btn-success btn-sm" onclick="liSubmitReply('${l.id}', this)">Save</button>
+        </div>
+      </div>
     </div>
   `).join('');
+}
+
+function liShowReply(id) {
+  const box = document.getElementById('li-reply-' + id);
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') box.querySelector('textarea').focus();
+}
+
+async function liSubmitReply(id, btn) {
+  const textarea = btn.parentElement.querySelector('textarea');
+  const reply_text = textarea.value.trim();
+  btn.disabled = true;
+  try {
+    await api('os', `/api/linkedin/leads/${id}/status`, 'PUT', { status: 'replied', reply_text });
+    toast('Marked replied', 'success');
+    loadLinkedIn();
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
 }
 
 async function liSetStatus(id, status) {
@@ -732,20 +964,16 @@ async function liSaveNotes(id, notes) {
   try { await api('os', `/api/linkedin/leads/${id}/notes`, 'PUT', { notes }); } catch {}
 }
 
-async function findLinkedIn() {
-  const input = document.getElementById('li-clinic-input');
-  const name = input.value.trim();
-  if (!name) { toast('Enter a clinic name', 'error'); return; }
-  const btn = document.querySelector('#page-linkedin .btn-primary');
+async function findAllDecisionMakers() {
+  const btn = document.getElementById('btn-li-find');
   btn.disabled = true;
   btn.textContent = '⏳ Searching…';
   try {
-    const r = await api('os', '/api/linkedin/find', 'POST', { clinic_name: name });
-    toast(`Found: ${r.lead.contact_name || 'Generated note'}`, 'success');
-    input.value = '';
+    const r = await api('os', '/api/linkedin/find-all', 'POST', {});
+    toast(`Found ${r.found} new decision makers`, 'success');
     loadLinkedIn();
   } catch (e) { toast(e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = '🔍 Find Decision Maker'; }
+  finally { btn.disabled = false; btn.textContent = '🔍 Find Decision Makers'; }
 }
 
 // ── Warm Leads ────────────────────────────────────────────────────────────
@@ -758,9 +986,9 @@ async function loadWarm() {
       api('os', '/api/linkedin/leads?status=replied').catch(() => ({ leads: [] })),
     ]);
 
-    const emailWarm = (emailRes.leads || []).map(l => ({ ...l, _channel: 'email', _title: l.clinic_name || l.name, _sub: l.email || '' }));
-    const igWarm    = (igRes.leads   || []).map(l => ({ ...l, _channel: 'instagram', _title: l.handle, _sub: l.clinic_name || '' }));
-    const liWarm    = (liRes.leads   || []).map(l => ({ ...l, _channel: 'linkedin', _title: l.contact_name || l.clinic_name, _sub: l.title || '' }));
+    const emailWarm = (emailRes.leads || []).map(l => ({ ...l, _channel: 'email',     _title: l.clinic_name || l.name, _sub: l.email || '' }));
+    const igWarm    = (igRes.leads   || []).map(l => ({ ...l, _channel: 'instagram', _title: l.handle,                _sub: l.clinic_name || '' }));
+    const liWarm    = (liRes.leads   || []).map(l => ({ ...l, _channel: 'linkedin',  _title: l.contact_name || l.clinic_name, _sub: l.title || '' }));
     const all = [...emailWarm, ...igWarm, ...liWarm];
 
     document.getElementById('warm-total').textContent = all.length;
@@ -807,7 +1035,7 @@ async function loadAnalytics() {
 
     const em = emailMetrics || {};
     const ig = osAnalytics?.instagram || {};
-    const li = osAnalytics?.linkedin || {};
+    const li = osAnalytics?.linkedin  || {};
 
     el.innerHTML = `
       <div class="analytics-card">
@@ -829,8 +1057,8 @@ async function loadAnalytics() {
       <div class="analytics-card">
         <div class="analytics-card-title">💼 LinkedIn</div>
         <div class="analytics-row"><span class="analytics-row-label">Total</span><span class="analytics-row-value">${li.total ?? '–'}</span></div>
-        <div class="analytics-row"><span class="analytics-row-label">Requests Sent</span><span class="analytics-row-value">${li.sent ?? '–'}</span></div>
-        <div class="analytics-row"><span class="analytics-row-label">Accepted</span><span class="analytics-row-value" style="color:var(--green)">${li.accepted ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Requests Sent</span><span class="analytics-row-value">${li.request_sent ?? '–'}</span></div>
+        <div class="analytics-row"><span class="analytics-row-label">Connected</span><span class="analytics-row-value" style="color:var(--green)">${li.connected ?? '–'}</span></div>
         <div class="analytics-row"><span class="analytics-row-label">Replied</span><span class="analytics-row-value" style="color:var(--green)">${li.replied ?? '–'}</span></div>
         <div class="analytics-row"><span class="analytics-row-label">Accept Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${li.accept_rate != null ? li.accept_rate + '%' : '–'}</span></div>
         <div class="analytics-row"><span class="analytics-row-label">Reply Rate</span><span class="analytics-row-value" style="color:var(--yellow)">${li.reply_rate != null ? li.reply_rate + '%' : '–'}</span></div>
@@ -838,9 +1066,9 @@ async function loadAnalytics() {
       <div class="analytics-card">
         <div class="analytics-card-title">📊 Combined</div>
         ${(() => {
-          const totalSent = (em.sent || 0) + (ig.dm_sent || 0) + (li.sent || 0);
-          const totalWarm = (em.warm || 0) + (ig.warm || 0) + (li.replied || 0);
-          const combined = totalSent > 0 ? Math.round((totalWarm / totalSent) * 100) : 0;
+          const totalSent = (em.sent || 0) + (ig.dm_sent || 0) + (li.request_sent || 0);
+          const totalWarm = (em.warm || 0) + (ig.warm   || 0) + (li.replied      || 0);
+          const combined  = totalSent > 0 ? Math.round((totalWarm / totalSent) * 100) : 0;
           return `
             <div class="analytics-row"><span class="analytics-row-label">Total Outreach</span><span class="analytics-row-value">${totalSent}</span></div>
             <div class="analytics-row"><span class="analytics-row-label">Total Warm</span><span class="analytics-row-value" style="color:var(--green)">${totalWarm}</span></div>
@@ -862,7 +1090,7 @@ function esc(s) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 loadCfg();
-loadEmail();
+loadQueue();
 </script>
 </body>
 </html>

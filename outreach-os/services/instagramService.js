@@ -7,25 +7,30 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 const DM_TEMPLATE = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
 
 const SEARCH_QUERIES = [
-  'veterinärklinik Stockholm instagram',
-  'djurklinik Stockholm site:instagram.com',
-  'veterinär Stockholm instagram.com/@',
   'veterinärklinik Södermalm instagram',
   'djurklinik Bromma instagram',
   'veterinär Nacka instagram',
   'veterinärklinik Täby instagram',
   'djurklinik Lidingö instagram',
-  'veterinär Vasastan instagram',
-  'djurklinik Kungsholmen instagram',
+  'veterinär Kungsholmen instagram',
+  'djurklinik Järfälla instagram',
+  'veterinärklinik Huddinge instagram',
+  'veterinär Solna instagram',
+  'djurklinik Vasastan instagram',
   'veterinär Östermalm instagram',
   'djurklinik Sundbyberg instagram',
-  'veterinärklinik Huddinge instagram',
-  'veterinär Farsta instagram',
+  'veterinärklinik Farsta instagram',
+  'veterinär Stockholm site:instagram.com',
 ];
 
 function normaliseHandle(raw) {
   if (!raw) return null;
-  return raw.replace(/^@/, '').replace(/https?:\/\/(?:www\.)?instagram\.com\/?/i, '').replace(/\/$/, '').toLowerCase().trim();
+  return raw
+    .replace(/^@/, '')
+    .replace(/https?:\/\/(?:www\.)?instagram\.com\/?/i, '')
+    .replace(/\/$/, '')
+    .toLowerCase()
+    .trim();
 }
 
 function shuffle(arr) {
@@ -39,10 +44,10 @@ function shuffle(arr) {
 async function searchOneQuery(query, existingHandles) {
   const prompt = `Search for Instagram handles of veterinary clinics in Stockholm, Sweden using this query: "${query}".
 
-Return a JSON array of objects: [{"handle":"@clinichandle","clinic_name":"Clinic Name","area":"Stockholm area"}]
+Return a JSON array of objects: [{"handle":"@clinichandle","clinic_name":"Clinic Name","area":"Stockholm neighbourhood"}]
 Rules:
 - Only real Instagram handles you found in search results (format: @username or instagram.com/username)
-- Only veterinary clinics in Stockholm area
+- Only veterinary clinics (veterinär, djurklinik, smådjursklinik) in Stockholm area
 - Return [] if nothing found
 Return only the JSON array, no other text.`;
 
