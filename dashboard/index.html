@@ -353,7 +353,7 @@
   <input class="settings-input" id="cfg-email-key" type="password" placeholder="1790f2bc...">
   <div class="divider"></div>
   <label class="settings-label">Outreach OS URL</label>
-  <input class="settings-input" id="cfg-os-url" placeholder="http://localhost:3002">
+  <input class="settings-input" id="cfg-os-url" placeholder="https://cas-outreach-os-production.up.railway.app">
   <label class="settings-label">Outreach OS API Key</label>
   <input class="settings-input" id="cfg-os-key" type="password" placeholder="your-api-key">
   <div class="divider"></div>
@@ -374,7 +374,7 @@ function loadCfg() {
   cfg = {
     emailUrl: ls('email-url') || 'https://cas-email-engine-backend-production-3b02.up.railway.app',
     emailKey: ls('email-key') || '',
-    osUrl:    ls('os-url')    || 'http://localhost:3002',
+    osUrl:    ls('os-url')    || 'https://cas-outreach-os-production.up.railway.app',
     osKey:    ls('os-key')    || '',
   };
 }
