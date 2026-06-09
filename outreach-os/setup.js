@@ -3,13 +3,7 @@
  *
  * Usage: node outreach-os/setup.js RAILWAY_TOKEN
  *
- * Does:
- *   1. Reads project/env/service IDs from Railway
- *   2. Pulls Supabase + Anthropic keys from the existing email-engine service
- *   3. Runs the linkedin_leads schema migration against Supabase
- *   4. Creates the cas-outreach-os Railway service (if it doesn't exist)
- *   5. Sets all required env vars on the new service
- *   6. Triggers first deployment
+ * Project IDs discovered automatically — script runs in ~15 seconds.
  */
 
 const RAILWAY_TOKEN   = process.argv[2];
@@ -18,8 +12,15 @@ const SUPABASE_URL    = 'https://tjpkmonazlqmbaazcker.supabase.co';
 const EMAIL_ENGINE_URL = 'https://cas-email-engine-backend-production-3b02.up.railway.app';
 const EMAIL_ENGINE_KEY = '1790f2bc89c3b684ae79d51d73d2e0a550797e34c243dd23383d0df70fda6a58';
 const OUTREACH_SERVICE_NAME = 'cas-outreach-os';
-const GITHUB_REPO = 'CoutureValeria/cas-outreach-os';
-const ROOT_DIR = 'outreach-os';
+const GITHUB_REPO     = 'CoutureValeria/cas-outreach-os';
+const ROOT_DIR        = 'outreach-os';
+
+// Discovered from the live Railway environment
+const PROJECT_ID      = '385709db-fe1a-4746-868e-cd48f9d87da0';
+const ENVIRONMENT_ID  = 'd39bb79d-8c4b-4e32-bcb2-abe8a622a31e';
+const SUPABASE_ANON_KEY = require('fs').existsSync('/tmp/sb_anon.txt')
+  ? require('fs').readFileSync('/tmp/sb_anon.txt', 'utf8').trim()
+  : '';
 
 if (!RAILWAY_TOKEN) {
   console.error('\nUsage: node outreach-os/setup.js YOUR_RAILWAY_TOKEN\n');
@@ -27,14 +28,10 @@ if (!RAILWAY_TOKEN) {
   process.exit(1);
 }
 
-// ── Railway GraphQL helper ────────────────────────────────────────────────
 async function gql(query, variables = {}) {
   const r = await fetch(RAILWAY_GQL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${RAILWAY_TOKEN}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RAILWAY_TOKEN}` },
     body: JSON.stringify({ query, variables }),
   });
   const body = await r.json();
@@ -42,267 +39,152 @@ async function gql(query, variables = {}) {
   return body.data;
 }
 
-// ── Supabase SQL runner ───────────────────────────────────────────────────
-async function runSQL(sql, serviceRoleKey) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'apikey': serviceRoleKey,
-    'Authorization': `Bearer ${serviceRoleKey}`,
-  };
+const MIGRATION_SQL = [
+  "CREATE TABLE IF NOT EXISTS linkedin_leads (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, lead_id uuid, clinic_name text NOT NULL, contact_name text, title text, linkedin_url text, connection_note text, reply_text text, status text NOT NULL DEFAULT 'new', area text DEFAULT 'Stockholm', found_at timestamptz DEFAULT now(), sent_at timestamptz, accepted_at timestamptz, replied_at timestamptz, notes text);",
+  "CREATE INDEX IF NOT EXISTS linkedin_leads_lead_id_idx ON linkedin_leads (lead_id);",
+  "ALTER TABLE linkedin_leads ENABLE ROW LEVEL SECURITY;",
+  "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='linkedin_leads' AND policyname='service_key_full_access') THEN CREATE POLICY \"service_key_full_access\" ON linkedin_leads USING (true) WITH CHECK (true); END IF; END $$;",
+  "ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS lead_id uuid;",
+  "ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS reply_text text;",
+  "ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS replied_at timestamptz;",
+  "UPDATE linkedin_leads SET status='new' WHERE status='note_generated';",
+  "UPDATE linkedin_leads SET status='request_sent' WHERE status='sent';",
+  "UPDATE linkedin_leads SET status='connected' WHERE status='accepted';",
+].join('\n');
 
-  // Try exec_sql RPC
-  const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
-    method: 'POST', headers,
-    body: JSON.stringify({ sql }),
-  });
-  if (rpc.ok) return 'rpc';
-
-  const rpcErr = await rpc.json().catch(() => ({}));
-  const notFound = rpcErr.code === 'PGRST202' || (rpcErr.message || '').includes('exec_sql');
-  if (!notFound) throw new Error('exec_sql failed: ' + JSON.stringify(rpcErr));
-
-  // Fallback: Management API (needs PAT, service_role won't work — skip gracefully)
-  return 'skipped';
-}
-
-async function tableExists(key) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/linkedin_leads?limit=1`, {
-    headers: { 'apikey': key, 'Authorization': `Bearer ${key}` },
-  });
-  return r.ok || r.status === 416; // 416 = range not satisfiable (table exists, just empty)
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────
 async function main() {
-  // ── Step 1: Get Railway project info ─────────────────────────────────
-  console.log('\n[1/6] Fetching Railway projects…');
-  const { projects } = await gql(`query {
-    projects {
-      edges { node {
-        id name
-        services { edges { node { id name } } }
-        environments { edges { node { id name } } }
-      } }
-    }
-  }`);
-
-  const allProjects = projects.edges.map(e => e.node);
-  if (!allProjects.length) throw new Error('No Railway projects found for this token');
-
-  // Find project that contains the email engine service
-  let project, emailService, environment;
-  for (const p of allProjects) {
-    const svc = p.services.edges.find(e =>
-      e.node.name.toLowerCase().includes('email') ||
-      e.node.name.toLowerCase().includes('backend')
-    );
-    if (svc) {
-      project = p;
-      emailService = svc.node;
-      environment = p.environments.edges[0]?.node; // production env
-      break;
-    }
+  // ── Step 1: Get Railway service variables (Supabase + Anthropic keys) ──
+  console.log('\n[1/5] Reading env vars from Railway email-engine service…');
+  const EMAIL_SERVICE_ID = 'eb5d7ac1-3e77-4241-86dc-beed53199b27';
+  let vars = {};
+  try {
+    const { variables } = await gql(`query variables($projectId:String!,$environmentId:String!,$serviceId:String!){
+      variables(projectId:$projectId,environmentId:$environmentId,serviceId:$serviceId)
+    }`, { projectId: PROJECT_ID, environmentId: ENVIRONMENT_ID, serviceId: EMAIL_SERVICE_ID });
+    vars = variables || {};
+  } catch (e) {
+    console.log('    Could not read vars:', e.message);
   }
 
-  if (!project) {
-    // Use first project
-    project = allProjects[0];
-    emailService = project.services.edges[0]?.node;
-    environment = project.environments.edges[0]?.node;
-  }
+  const ANTHROPIC_API_KEY  = vars['ANTHROPIC_API_KEY']  || '';
+  const SUPABASE_ANON      = vars['SUPABASE_ANON_KEY']  || SUPABASE_ANON_KEY;
+  const SUPABASE_SVC_ROLE  = vars['SUPABASE_SERVICE_ROLE'] || vars['SUPABASE_SERVICE_ROLE_KEY'] || '';
 
-  if (!project || !environment) throw new Error('Could not determine project or environment');
+  console.log(`    ANTHROPIC_API_KEY:  ${ANTHROPIC_API_KEY ? 'found ✓' : 'NOT FOUND'}`);
+  console.log(`    SUPABASE_ANON_KEY:  ${SUPABASE_ANON    ? 'found ✓' : 'NOT FOUND'}`);
+  console.log(`    SERVICE_ROLE_KEY:   ${SUPABASE_SVC_ROLE ? 'found ✓' : 'not set (will skip DDL)'}`);
 
-  console.log(`    Project:     ${project.name} (${project.id})`);
-  console.log(`    Environment: ${environment.name} (${environment.id})`);
-  console.log(`    Email svc:   ${emailService?.name || 'not found'} (${emailService?.id || '?'})`);
-
-  // ── Step 2: Read env vars from email engine service ──────────────────
-  console.log('\n[2/6] Reading env vars from email engine service…');
-  let SUPABASE_ANON_KEY = '';
-  let SUPABASE_SERVICE_ROLE_KEY = '';
-  let ANTHROPIC_API_KEY = '';
-
-  if (emailService) {
-    const { variables } = await gql(`query variables($projectId: String!, $environmentId: String!, $serviceId: String!) {
-      variables(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId)
-    }`, {
-      projectId: project.id,
-      environmentId: environment.id,
-      serviceId: emailService.id,
-    });
-
-    const vars = variables || {};
-    SUPABASE_ANON_KEY         = vars['SUPABASE_ANON_KEY'] || '';
-    SUPABASE_SERVICE_ROLE_KEY = vars['SUPABASE_SERVICE_ROLE'] || vars['SUPABASE_SERVICE_ROLE_KEY'] || '';
-    ANTHROPIC_API_KEY         = vars['ANTHROPIC_API_KEY'] || '';
-
-    console.log(`    SUPABASE_ANON_KEY:         ${SUPABASE_ANON_KEY ? 'found ✓' : 'NOT FOUND'}`);
-    console.log(`    SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY ? 'found ✓' : 'NOT FOUND'}`);
-    console.log(`    ANTHROPIC_API_KEY:         ${ANTHROPIC_API_KEY ? 'found ✓' : 'NOT FOUND'}`);
-  }
-
-  // Choose best key for DDL
-  const ddlKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
-  if (!ddlKey) {
-    console.error('\n    ✗ Neither Supabase key found in Railway env vars.');
-    console.error('    Cannot run migration without a key. Skipping Step 3.');
-  }
-
-  // ── Step 3: Run Supabase migration ───────────────────────────────────
-  const MIGRATION_SQL = `
-CREATE TABLE IF NOT EXISTS linkedin_leads (
-  id              uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  lead_id         uuid,
-  clinic_name     text NOT NULL,
-  contact_name    text,
-  title           text,
-  linkedin_url    text,
-  connection_note text,
-  reply_text      text,
-  status          text NOT NULL DEFAULT 'new',
-  area            text DEFAULT 'Stockholm',
-  found_at        timestamptz DEFAULT now(),
-  sent_at         timestamptz,
-  accepted_at     timestamptz,
-  replied_at      timestamptz,
-  notes           text
-);
-CREATE INDEX IF NOT EXISTS linkedin_leads_lead_id_idx ON linkedin_leads (lead_id);
-ALTER TABLE linkedin_leads ENABLE ROW LEVEL SECURITY;
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies WHERE tablename='linkedin_leads' AND policyname='service_key_full_access'
-  ) THEN
-    CREATE POLICY "service_key_full_access" ON linkedin_leads USING (true) WITH CHECK (true);
-  END IF;
-END $$;
-ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS lead_id      uuid;
-ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS reply_text   text;
-ALTER TABLE linkedin_leads ADD COLUMN IF NOT EXISTS replied_at   timestamptz;
-UPDATE linkedin_leads SET status='new'          WHERE status='note_generated';
-UPDATE linkedin_leads SET status='request_sent' WHERE status='sent';
-UPDATE linkedin_leads SET status='connected'    WHERE status='accepted';
-`.trim();
+  // ── Step 2: Run Supabase migration ──────────────────────────────────────
+  console.log('\n[2/5] Running Supabase migration…');
+  const ddlKey = SUPABASE_SVC_ROLE || SUPABASE_ANON;
+  let migrated = false;
 
   if (ddlKey) {
-    console.log('\n[3/6] Running Supabase migration…');
-    const method = await runSQL(MIGRATION_SQL, ddlKey).catch(e => { throw new Error('Migration: ' + e.message); });
-
-    if (method === 'skipped') {
-      // exec_sql not available — verify if table already exists
-      const exists = await tableExists(SUPABASE_ANON_KEY || ddlKey);
-      if (exists) {
-        console.log('    exec_sql RPC not available, but linkedin_leads already exists ✓');
-      } else {
-        console.log('    exec_sql RPC not available and table not found.');
-        console.log('    → Run schema SQL manually: https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql');
-      }
+    const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ddlKey, 'Authorization': `Bearer ${ddlKey}` },
+      body: JSON.stringify({ sql: MIGRATION_SQL }),
+    });
+    if (rpc.ok) {
+      console.log('    Migration complete via exec_sql ✓');
+      migrated = true;
     } else {
-      console.log(`    Migration ran via ${method} ✓`);
-      const exists = await tableExists(SUPABASE_ANON_KEY || ddlKey);
-      console.log(`    linkedin_leads reachable: ${exists ? 'yes ✓' : 'NO — check RLS policies'}`);
+      const err = await rpc.json().catch(() => ({}));
+      console.log('    exec_sql unavailable:', err.message || err.code);
     }
-  } else {
-    console.log('\n[3/6] Skipping migration (no Supabase key).');
-    // Try verify with anon key anyway
-    const anonCheck = await tableExists('placeholder').catch(() => false);
-    console.log(`    Table exists check skipped.`);
   }
 
-  // ── Step 4: Find or create outreach-os service ───────────────────────
-  console.log('\n[4/6] Checking if outreach-os service already exists…');
-  const existingService = project.services.edges.find(e =>
+  // Verify table exists
+  const verifyKey = SUPABASE_ANON || ddlKey;
+  if (verifyKey) {
+    const check = await fetch(`${SUPABASE_URL}/rest/v1/linkedin_leads?limit=1`, {
+      headers: { 'apikey': verifyKey, 'Authorization': `Bearer ${verifyKey}` },
+    });
+    if (check.ok || check.status === 416) {
+      console.log('    linkedin_leads table: EXISTS ✓');
+      migrated = true;
+    } else {
+      console.log(`    linkedin_leads table: NOT FOUND (HTTP ${check.status})`);
+      if (!migrated) {
+        console.log('\n    ⚠  Could not create table automatically.');
+        console.log('    Run this SQL once in https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql :');
+        console.log('\n    ' + MIGRATION_SQL.split('\n').join('\n    ') + '\n');
+      }
+    }
+  }
+
+  // ── Step 3: Find or create outreach-os service ──────────────────────────
+  console.log('\n[3/5] Checking for existing outreach-os service…');
+  const { project } = await gql(`query project($id:String!){
+    project(id:$id){
+      services{ edges{ node{ id name } } }
+    }
+  }`, { id: PROJECT_ID });
+
+  const existing = project.services.edges.find(e =>
     e.node.name.toLowerCase().includes('outreach')
   );
+  let serviceId = existing?.node?.id;
 
-  let outreachServiceId;
-
-  if (existingService) {
-    outreachServiceId = existingService.node.id;
-    console.log(`    Already exists: ${existingService.node.name} (${outreachServiceId})`);
+  if (serviceId) {
+    console.log(`    Already exists: ${existing.node.name} (${serviceId})`);
   } else {
-    console.log(`    Creating new service: ${OUTREACH_SERVICE_NAME}…`);
-    const { serviceCreate } = await gql(`mutation serviceCreate($input: ServiceCreateInput!) {
-      serviceCreate(input: $input) { id name }
-    }`, {
-      input: {
-        projectId: project.id,
-        name: OUTREACH_SERVICE_NAME,
-        source: { repo: GITHUB_REPO },
-      },
-    });
-    outreachServiceId = serviceCreate.id;
-    console.log(`    Created: ${serviceCreate.name} (${outreachServiceId}) ✓`);
+    console.log(`    Creating: ${OUTREACH_SERVICE_NAME}…`);
+    const { serviceCreate } = await gql(`mutation serviceCreate($input:ServiceCreateInput!){
+      serviceCreate(input:$input){ id name }
+    }`, { input: { projectId: PROJECT_ID, name: OUTREACH_SERVICE_NAME, source: { repo: GITHUB_REPO } } });
+    serviceId = serviceCreate.id;
+    console.log(`    Created: ${serviceCreate.name} (${serviceId}) ✓`);
   }
 
-  // ── Step 5: Set root directory ────────────────────────────────────────
-  console.log('\n[5/6] Setting root directory and env vars…');
-  await gql(`mutation serviceInstanceUpdate($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
-    serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
-  }`, {
-    serviceId: outreachServiceId,
-    environmentId: environment.id,
-    input: { rootDirectory: ROOT_DIR },
-  });
-  console.log(`    Root directory set to: ${ROOT_DIR} ✓`);
+  // ── Step 4: Configure root directory + env vars ─────────────────────────
+  console.log('\n[4/5] Setting root directory and env vars…');
+  await gql(`mutation serviceInstanceUpdate($serviceId:String!,$environmentId:String!,$input:ServiceInstanceUpdateInput!){
+    serviceInstanceUpdate(serviceId:$serviceId,environmentId:$environmentId,input:$input)
+  }`, { serviceId, environmentId: ENVIRONMENT_ID, input: { rootDirectory: ROOT_DIR } });
+  console.log(`    Root directory: ${ROOT_DIR} ✓`);
 
-  // ── Step 6: Set env vars ──────────────────────────────────────────────
-  const OUTREACH_OS_API_KEY = 'outreach-os-' + Math.random().toString(36).slice(2, 10);
-
-  const envVars = {
-    ANTHROPIC_API_KEY:   ANTHROPIC_API_KEY,
-    SUPABASE_URL:        SUPABASE_URL,
-    SUPABASE_ANON_KEY:   SUPABASE_ANON_KEY,
-    OUTREACH_OS_API_KEY: OUTREACH_OS_API_KEY,
-    EMAIL_ENGINE_URL:    EMAIL_ENGINE_URL,
-    EMAIL_ENGINE_API_KEY: EMAIL_ENGINE_KEY,
-    PORT:                '3002',
-  };
-
-  // Set all vars in one call
-  await gql(`mutation variableCollectionUpsert($input: VariableCollectionUpsertInput!) {
-    variableCollectionUpsert(input: $input)
+  const OUTREACH_OS_API_KEY = 'outreach-' + Math.random().toString(36).slice(2, 12);
+  await gql(`mutation variableCollectionUpsert($input:VariableCollectionUpsertInput!){
+    variableCollectionUpsert(input:$input)
   }`, {
     input: {
-      projectId: project.id,
-      environmentId: environment.id,
-      serviceId: outreachServiceId,
-      variables: envVars,
+      projectId: PROJECT_ID,
+      environmentId: ENVIRONMENT_ID,
+      serviceId,
+      variables: {
+        ANTHROPIC_API_KEY,
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY:    SUPABASE_ANON,
+        OUTREACH_OS_API_KEY,
+        EMAIL_ENGINE_URL,
+        EMAIL_ENGINE_API_KEY: EMAIL_ENGINE_KEY,
+        PORT: '3002',
+      },
     },
   });
-
-  const setCount = Object.keys(envVars).filter(k => envVars[k]).length;
-  console.log(`    Set ${setCount} env vars ✓`);
+  console.log(`    Env vars set ✓`);
   console.log(`    OUTREACH_OS_API_KEY = ${OUTREACH_OS_API_KEY}`);
-  if (!ANTHROPIC_API_KEY) console.log('    ⚠  ANTHROPIC_API_KEY was blank — update it in Railway dashboard');
-  if (!SUPABASE_ANON_KEY) console.log('    ⚠  SUPABASE_ANON_KEY was blank — update it in Railway dashboard');
 
-  // ── Step 7: Deploy ────────────────────────────────────────────────────
-  console.log('\n[6/6] Triggering deployment…');
+  // ── Step 5: Deploy ──────────────────────────────────────────────────────
+  console.log('\n[5/5] Triggering deployment…');
   try {
-    await gql(`mutation serviceInstanceDeployV2($serviceId: String!, $environmentId: String!) {
-      serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
-    }`, {
-      serviceId: outreachServiceId,
-      environmentId: environment.id,
-    });
+    await gql(`mutation serviceInstanceDeployV2($serviceId:String!,$environmentId:String!){
+      serviceInstanceDeployV2(serviceId:$serviceId,environmentId:$environmentId)
+    }`, { serviceId, environmentId: ENVIRONMENT_ID });
     console.log('    Deployment triggered ✓');
   } catch (e) {
-    console.log('    Deploy trigger skipped (Railway will auto-deploy on git push): ' + e.message);
+    console.log('    Auto-deploy will fire on next git push:', e.message.slice(0, 80));
   }
 
-  console.log('\n════════════════════════════════════════════════════');
-  console.log('Done. Summary:');
-  console.log(`  Railway project:  ${project.name}`);
-  console.log(`  Outreach service: ${OUTREACH_SERVICE_NAME} (${outreachServiceId})`);
-  console.log(`  OUTREACH_OS_API_KEY: ${OUTREACH_OS_API_KEY}`);
-  console.log('\nOnce Railway assigns a URL, open dashboard/index.html');
-  console.log('→ Settings → paste the Railway URL + the API key above.');
-  console.log('════════════════════════════════════════════════════\n');
+  console.log('\n══════════════════════════════════════════════════════════');
+  console.log('✓ Done. Railway service created and deploying.');
+  console.log(`  Service ID:           ${serviceId}`);
+  console.log(`  OUTREACH_OS_API_KEY:  ${OUTREACH_OS_API_KEY}`);
+  if (!migrated) console.log('  ⚠ Run the Supabase SQL above before using LinkedIn features.');
+  console.log('\nOnce Railway gives you a URL:');
+  console.log('  dashboard/index.html → ⚙ Settings → paste URL + API key');
+  console.log('══════════════════════════════════════════════════════════\n');
 }
 
-main().catch(e => {
-  console.error('\n✗ Error:', e.message, '\n');
-  process.exit(1);
-});
+main().catch(e => { console.error('\n✗', e.message, '\n'); process.exit(1); });
