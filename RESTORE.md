@@ -1,12 +1,11 @@
 I am continuing work on the CAS Automations outreach system.
 
 Read these files in order before doing anything:
-1. backend/CONTEXT.md — full system overview, current status, Outreach OS details
-2. backend/services/emailService.js — email sending and scheduling
-3. backend/services/gmailPoller.js — IMAP reply detection (two-pass fetch fix)
-4. backend/server.js — API routes and webhook handlers
-5. outreach-os/server.js — Outreach OS API routes
-6. dashboard/index.html — unified frontend
+1. backend/CONTEXT.md — full system overview, current status, all fixes deployed
+2. backend/services/schedulerService.js — cron schedule + startup recovery logic
+3. backend/services/emailService.js — send rules, in-memory lock, circuit breaker
+4. backend/services/stateService.js — persistent state service (Supabase + in-memory fallback)
+5. backend/server.js — API routes, migration endpoint
 
 System is deployed on:
 - Email engine backend: Railway — https://cas-email-engine-backend-production-3b02.up.railway.app
@@ -18,27 +17,28 @@ System is deployed on:
 - Email sending: Resend (primary), Gmail SMTP fallback
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (polling every 30 min)
 
-Current status as of 2026-06-08:
+Current status as of 2026-06-09:
 - Email engine fully operational — pipeline running end to end
 - IMAP two-pass fetch fix deployed — reply detection working
-- Outreach OS service built (/outreach-os) — needs Railway deployment
-- Unified dashboard built (/dashboard/index.html) — connects to both backends
-- linkedin_leads Supabase table NOT YET CREATED — run schema SQL first
+- Send lock fixed — was broken since the lock was introduced (DB enum constraint rejected 'sending' status)
+- Startup recovery deployed — missed send windows auto-recovered 30s after boot
+- Persistent state service deployed — stateService.js reads/writes to system_state table (in-memory fallback until migration runs)
+- 21 approved leads with emails, 0 null-email leads, 6 sent total
+- Last send: info@vetjosefine.se on 2026-06-09 14:06 UTC
+- Next scheduled send: Tue 2026-06-10 09:00 Stockholm
 
-One-time task before using Outreach OS:
-  Run outreach-os/database/schema.sql in Supabase SQL editor:
-  https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql
+API key: 1790f2bc89c3b684ae79d51d73d2e0a550797e34c243dd23383d0df70fda6a58
 
-Deploy Outreach OS to Railway:
+One-time task — activate persistent state (FIX 2):
+  Run database/schema_update.sql in Supabase SQL editor OR call:
+  POST /api/admin/run-migration (X-API-Key header required)
+  SQL editor: https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql
+  This creates the system_state table. Until then, state resets on restart (in-memory fallback active).
+
+One-time task — Outreach OS deploy (still pending):
   1. New Service → GitHub Repo → CoutureValeria/cas-outreach-os → Root Directory: outreach-os
   2. Set env vars: OUTREACH_OS_API_KEY, ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
-  3. After deploy: open dashboard/index.html Settings and fill in the new Railway URL
-
-Known issues / next:
-- Outreach OS not yet deployed to Railway (awaiting manual Railway UI step)
-- linkedin_leads table not yet created in Supabase (awaiting manual SQL run)
-- GOOGLE_SERVICE_ACCOUNT_JSON not set (Google Sheets sync inactive — optional)
-- Facebook Messenger channel not active (no FB env vars — optional)
+  3. Run outreach-os/database/schema.sql in Supabase SQL editor (linkedin_leads table)
 
 Do not make any changes until you have read all files listed above.
 Then tell me the current state and ask what to work on.
