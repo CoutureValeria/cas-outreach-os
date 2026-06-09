@@ -42,14 +42,23 @@ function shuffle(arr) {
 }
 
 async function searchOneQuery(query, existingHandles) {
-  const prompt = `Search for Instagram handles of veterinary clinics in Stockholm, Sweden using this query: "${query}".
+  const prompt = `You are searching for Instagram accounts of Stockholm veterinary clinics.
 
-Return a JSON array of objects: [{"handle":"@clinichandle","clinic_name":"Clinic Name","area":"Stockholm neighbourhood"}]
+Do a web search for: ${query}
+
+Look specifically for:
+1. Direct Instagram profile URLs like instagram.com/clinicname
+2. Instagram handles mentioned on clinic websites or Google results
+3. Search instagram.com directly if needed
+
+Return ONLY a JSON array (no markdown, no explanation):
+[{"handle":"clinicname","clinic_name":"Klinikens Namn","area":"Södermalm"}]
+
 Rules:
-- Only real Instagram handles you found in search results (format: @username or instagram.com/username)
-- Only veterinary clinics (veterinär, djurklinik, smådjursklinik) in Stockholm area
-- Return [] if nothing found
-Return only the JSON array, no other text.`;
+- Include the handle WITHOUT @ prefix
+- Only veterinary clinics (veterinär, djurklinik, smådjursklinik, djursjukhus) in Stockholm area
+- Only handles you actually found — do not invent
+- If you find nothing, return: []`;
 
   try {
     const response = await anthropic.messages.create({
@@ -60,13 +69,24 @@ Return only the JSON array, no other text.`;
     });
 
     const textBlock = response.content.find(b => b.type === 'text');
-    if (!textBlock) return [];
+    if (!textBlock) {
+      console.log(`[Instagram] No text block for query: "${query}"`);
+      return [];
+    }
 
-    const match = textBlock.text.match(/\[[\s\S]*\]/);
-    if (!match) return [];
+    // Strip markdown code fences if present
+    const cleaned = textBlock.text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    const match = cleaned.match(/\[[\s\S]*?\]/);
+    if (!match) {
+      console.log(`[Instagram] No JSON array in response for "${query}". Raw: ${cleaned.slice(0, 200)}`);
+      return [];
+    }
     const parsed = JSON.parse(match[0]);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
+    if (!Array.isArray(parsed)) return [];
+    console.log(`[Instagram] Query "${query}" → ${parsed.length} result(s)`);
+    return parsed;
+  } catch (err) {
+    console.error(`[Instagram] searchOneQuery error for "${query}":`, err.message);
     return [];
   }
 }
@@ -85,8 +105,10 @@ async function findHandles(count = 8) {
       if (found.length >= count) break;
       const normalised = normaliseHandle(result.handle);
       if (!normalised || existingHandles.has(normalised)) continue;
+      // Skip obvious non-handles (too short, contains spaces, etc.)
+      if (normalised.length < 2 || normalised.includes(' ')) continue;
       existingHandles.add(normalised);
-      found.push({ ...result, handle: '@' + normalised });
+      found.push({ ...result, handle: normalised }); // stored without @
     }
   }
 

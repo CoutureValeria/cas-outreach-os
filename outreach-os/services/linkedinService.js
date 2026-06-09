@@ -27,34 +27,33 @@ async function findDecisionMaker(lead) {
 
   if (existing) return existing;
 
-  const painContext = primary_pain
-    ? `The clinic's main pain point is: ${primary_pain}.`
-    : '';
+  // primary_pain can be a key ('phone_overload') or free Swedish text
+  const painPhrase = PAIN_PHRASES[primary_pain] || primary_pain || 'hanterar bokningar manuellt';
+
   const notesContext = research_notes
-    ? `Research notes: ${research_notes.slice(0, 400)}`
+    ? `Research notes about this clinic: ${typeof research_notes === 'string' ? research_notes.slice(0, 400) : JSON.stringify(research_notes).slice(0, 400)}`
     : '';
 
-  const prompt = `Search LinkedIn for the owner, clinic director (klinikchef), or head vet of the veterinary clinic "${clinic_name}" in ${area}, Sweden.
+  const prompt = `Search LinkedIn for the owner, clinic director (klinikchef), or head veterinarian of "${clinic_name}" in ${area}, Sweden.
 
-${painContext}
 ${notesContext}
 
-Return a JSON object:
+Also try searching: "${clinic_name}" site:linkedin.com
+
+Return ONLY a JSON object (no markdown, no explanation):
 {
-  "contact_name": "First Last or null",
+  "contact_name": "First Last or null if not found",
   "title": "job title in Swedish or null",
   "linkedin_url": "https://linkedin.com/in/... or null",
-  "connection_note": "SHORT Swedish LinkedIn connection note, max 300 chars, 1-2 sentences"
+  "connection_note": "Short Swedish LinkedIn connection note, max 280 chars"
 }
 
-For connection_note rules:
-- Reference the specific pain: "${painToSwedish(primary_pain)}"
-- Sound like a genuine human, not a vendor pitch
-- Never mention AI, AI-receptionist, or automation technology by name
-- Address them by first name if found, otherwise use "du"
-- Example style: "Hej [name], såg att [clinic] ${painToSwedish(primary_pain)} — jobbar med en lösning för just det. Skulle gärna connecta."
-
-Return only the JSON object, no other text.`;
+For the connection_note:
+- Reference this specific pain: "${painPhrase}"
+- Sound like a genuine human peer, not a salesperson
+- Never say AI, artificial intelligence, or automation
+- Use their first name if found, otherwise "du"
+- Keep it to 1-2 casual sentences`;
 
   let result = { contact_name: null, title: null, linkedin_url: null, connection_note: null };
 
@@ -68,11 +67,23 @@ Return only the JSON object, no other text.`;
 
     const textBlock = response.content.find(b => b.type === 'text');
     if (textBlock) {
-      const match = textBlock.text.match(/\{[\s\S]*\}/);
-      if (match) result = { ...result, ...JSON.parse(match[0]) };
+      const cleaned = textBlock.text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+      const match = cleaned.match(/\{[\s\S]*?\}/);
+      if (match) {
+        result = { ...result, ...JSON.parse(match[0]) };
+        console.log(`[LinkedIn] ${clinic_name}: contact=${result.contact_name}, url=${result.linkedin_url}`);
+      } else {
+        console.log(`[LinkedIn] ${clinic_name}: no JSON in response. Raw: ${cleaned.slice(0, 150)}`);
+      }
+    } else {
+      console.log(`[LinkedIn] ${clinic_name}: no text block in Claude response`);
     }
-  } catch {
-    const painPhrase = painToSwedish(primary_pain);
+  } catch (err) {
+    console.error(`[LinkedIn] ${clinic_name}: Claude error:`, err.message);
+  }
+
+  // Always generate connection_note if missing
+  if (!result.connection_note) {
     const name = result.contact_name ? result.contact_name.split(' ')[0] : 'du';
     result.connection_note = `Hej ${name}, såg att ${clinic_name} ${painPhrase} — jobbar med en lösning för just det. Skulle gärna connecta.`;
   }
