@@ -65,7 +65,8 @@ For the connection_note:
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const textBlock = response.content.find(b => b.type === 'text');
+    const textBlocks = response.content.filter(b => b.type === 'text');
+    const textBlock = textBlocks[textBlocks.length - 1]; // last block has actual results
     if (textBlock) {
       const cleaned = textBlock.text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
       const match = cleaned.match(/\{[\s\S]*?\}/);

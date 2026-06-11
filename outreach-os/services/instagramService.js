@@ -68,7 +68,8 @@ Rules:
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const textBlock = response.content.find(b => b.type === 'text');
+    const textBlocks = response.content.filter(b => b.type === 'text');
+    const textBlock = textBlocks[textBlocks.length - 1]; // last block has actual results
     if (!textBlock) {
       console.log(`[Instagram] No text block for query: "${query}"`);
       return [];
