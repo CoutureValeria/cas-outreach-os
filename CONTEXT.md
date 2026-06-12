@@ -24,11 +24,6 @@
 
 ## Known issues requiring action
 
-- pain_evidence column missing from leads table in Supabase
-  → ALL vet-intel imports fail with PGRST205 (column not in schema cache)
-  → 6 existing unresearched leads also fail during 08:00 pipeline
-  → Fix: add column via Supabase SQL editor (see schema below)
-  
 - system_state table missing from Supabase
   → State (circuit breaker, last_import_at, imap timestamps) resets on restart
   → Fix: run POST /api/admin/run-migration with BACKEND_API_KEY header
@@ -40,15 +35,12 @@
 - X-Forwarded-For ValidationError in outreach-os logs
   → Add app.set('trust proxy', 1) to outreach-os/server.js
 
-## SQL to fix pain_evidence column
+## Pain column architecture note
 
-Run in Supabase SQL editor (https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql):
-
-```sql
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS pain_evidence text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS pain_source text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS pain_score integer DEFAULT 0;
-```
+The leads table has NO pain-specific columns (primary_pain, pain_evidence, pain_source,
+pain_score do not exist in the Supabase schema). All pain data lives in research_notes
+JSON blob. Email and follow-up prompts read from research_notes directly. DO NOT add
+these columns to INSERT/UPDATE payloads — PGRST205 will block every write.
 
 ## Architecture
 
