@@ -8,6 +8,7 @@ const instagramService = require('./services/instagramService');
 const linkedinService  = require('./services/linkedinService');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3002;
 const API_KEY = process.env.OUTREACH_OS_API_KEY;
 
