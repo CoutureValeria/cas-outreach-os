@@ -20,6 +20,8 @@
 - SECOND_GMAIL_ADDRESS set in Railway (confirmed in /api/test/status), SECOND_GMAIL_APP_PASSWORD must also be set
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
 - LinkedIn: 3 leads in DB, endpoint tested and working (saves to linkedin_leads table)
+- Email greeting now personalized: "Hej Rebecca," when contact_name is set (extractFirstName handles multi-part legal names)
+- Research prompt now asks for decision_maker_name (first name) from website + allabolag.se lookup
 
 ## Pain column architecture note
 
