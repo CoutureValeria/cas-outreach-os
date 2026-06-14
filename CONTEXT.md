@@ -10,14 +10,16 @@
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (+ second inbox when configured)
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-## Current status as of 2026-06-13
+## Current status as of 2026-06-14
 
 - System fully operational — all known issues resolved
-- Imports working (last vet-intel import 08:46 UTC 2026-06-13)
+- Imports working (last vet-intel import 09:00 UTC 2026-06-14)
 - 17 approved leads in queue, circuit ok, IMAP live
 - 3-touch follow-up sequence deployed: email → FU1 (day 3) → FU2 (day 8, "last contact")
-- Multi-city routing infrastructure built and ready (inactive until cities.js flipped + env vars set)
-- Second Gmail inbox polling supported — add SECOND_GMAIL_ADDRESS to activate
+- **Gothenburg active** — city flipped to active:true; sends fall back to default domain until SECOND_DOMAIN_FROM set
+- SECOND_GMAIL_ADDRESS set in Railway (confirmed in /api/test/status), SECOND_GMAIL_APP_PASSWORD must also be set
+- Instagram: 6 leads in DB (dm_sent), endpoint tested and working
+- LinkedIn: 3 leads in DB, endpoint tested and working (saves to linkedin_leads table)
 
 ## Pain column architecture note
 
@@ -37,8 +39,8 @@ JSON blob. DO NOT add these to INSERT/UPDATE payloads — PGRST205 blocks every 
 
 ## Send schedule
 
-- Tue/Wed/Thu: 09:00, 10:00, 11:00 Stockholm
-- Mon/Fri: 10:00 Stockholm
+- Mon–Fri: 09:00, 10:00, 11:00, 14:00 Stockholm (4 slots/day × 5 days = 20/week capacity)
+- DAILY_LIMIT = 4 (counts all outgoing emails: initial + follow-ups combined)
 - Daily pipeline: 08:00 Mon-Fri Stockholm (research + generate for imported leads)
 - Health check: every 6h UTC
 - Daily summary: 18:00 Mon-Fri Stockholm
