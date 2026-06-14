@@ -14,8 +14,14 @@
 
 - System fully operational — all known issues resolved
 - Imports working (last vet-intel import 09:00 UTC 2026-06-14)
-- 17 approved leads in queue, circuit ok, IMAP live
-- 3-touch follow-up sequence deployed: email → FU1 (day 3) → FU2 (day 8, "last contact")
+- 7 approved leads in queue, circuit ok, IMAP live
+- **3-touch breakup sequence live:** initial (day 0) → FU1 (day 5) → breakup email (day 10)
+  - Breakup: "Jag förstår om timing inte är rätt just nu." + one of two closing lines
+  - After breakup: status = `sequence_complete`, re_engage_after = now+90d
+  - PGRST205 fallback active until DB migration lands (status update still works)
+  - DB migration auto-runs at startup via migrationService.js (Supabase pooler probe)
+  - /api/test/status now shows `sequence_complete` count + `breakup_sent_7d`
+- Sign-off rebranded to "Kasper, Drivverk AB" in all email prompts (initial, FU1, breakup)
 - **Gothenburg active** — city flipped to active:true; sends fall back to default domain until SECOND_DOMAIN_FROM set
 - SECOND_GMAIL_ADDRESS set in Railway (confirmed in /api/test/status), SECOND_GMAIL_APP_PASSWORD must also be set
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
@@ -28,6 +34,12 @@
 The leads table has NO pain-specific columns (primary_pain, pain_evidence, pain_source,
 pain_score do not exist in the Supabase schema). All pain data lives in research_notes
 JSON blob. DO NOT add these to INSERT/UPDATE payloads — PGRST205 blocks every write.
+
+## New columns (pending DB migration)
+
+`follow_up_2_sent_at` (timestamptz) and `re_engage_after` (timestamptz) are added by
+migrationService.js at startup via Supabase pooler. Code has PGRST205 fallback so it
+works before migration lands. Status flow: sent → sequence_complete (after breakup email).
 
 ## Architecture
 
