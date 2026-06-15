@@ -21,6 +21,12 @@ const SEARCH_QUERIES = [
   'djurklinik Sundbyberg instagram',
   'veterinärklinik Farsta instagram',
   'veterinär Stockholm site:instagram.com',
+  'veterinärklinik Göteborg instagram',
+  'djurklinik Hisingen instagram',
+  'veterinär Mölndal instagram',
+  'djurklinik Majorna instagram',
+  'veterinärklinik Partille instagram',
+  'veterinär Göteborg site:instagram.com',
 ];
 
 function normaliseHandle(raw) {
