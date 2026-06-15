@@ -17,7 +17,8 @@ function painToSwedish(pain) {
 }
 
 async function findDecisionMaker(lead) {
-  const { id: lead_id, clinic_name, area = 'Stockholm', research_notes, primary_pain } = lead;
+  const { id: lead_id, name, clinic_name: _clinic_name, area = 'Stockholm', research_notes, primary_pain } = lead;
+  const clinic_name = _clinic_name || name;
 
   const { data: existing } = await supabase
     .from('linkedin_leads')
@@ -131,7 +132,9 @@ async function findAllDecisionMakers() {
     try {
       const found = await findDecisionMaker(lead);
       results.push(found);
-    } catch {}
+    } catch (err) {
+      console.error('[LinkedIn] findDecisionMaker failed for', lead.name || lead.clinic_name, ':', err.message);
+    }
   }
   return results;
 }
