@@ -3,33 +3,20 @@ Task-based scoring engine for job postings.
 
 Uses Claude claude-haiku-4-5-20251001 to:
   1. Read the full posting description
-  2. Extract every listed task/responsibility
-  3. Classify each as AUTOMATABLE or NOT_AUTOMATABLE
-  4. Calculate automation_fit_score = (automatable / total) * 100
-
-AUTOMATABLE tasks — booking/scheduling/routing/admin:
-  - Boka/planera resor, tider, möten
-  - Hantera inkommande samtal/bokningar/mail
-  - Koordinera leveranser, resurser, personal
-  - Enklare bokföring, fakturering, administration
-  - Kontakt med bank/leverantör/kund för rutinärenden
-  - Besvara repetitiva frågor, bekräfta avtalade tider, skicka påminnelser
-  - Orderhantering, ärendeloggning, dataregistrering
-
-NOT AUTOMATABLE tasks:
-  - Physical presence required (hantverkare, städning, inspektion)
-  - Specialized judgment (teknisk diagnos, juridik, medicin)
-  - Face-to-face interaction is the CORE of the role (mötesbaserad rådgivning)
-  - Creative/strategic decisions (marknadsföring, produktutveckling)
+  2. Extract every listed task/responsibility + classify automatable vs not
+  3. Calculate automation_fit_score = (automatable / total) * 100
+  4. Identify automation_type (category) for concrete example mapping
+  5. Generate email using general category framing, not mirrored task list
 
 Score tiers:
-  HIGH   (75-100): direct pitch — "har ni funderat på automatisering?"
-  MODERATE (50-74): discovery — reference specific automatable tasks
-  IGNORE (<50):   discard
+  HIGH   (75-100): direct — "funderat pa automatisering?"
+  MODERATE (50-74): discovery — general category + concrete example
+  IGNORE (<50):    discard
 """
 
 import json
 import re
+import requests
 import anthropic
 
 import sys, os
@@ -39,6 +26,116 @@ from config.settings import ANTHROPIC_API_KEY, SCORE_THRESHOLD
 
 _CLIENT = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 _MODEL  = "claude-haiku-4-5-20251001"
+
+
+# ── Dash sanitizer (shared) ────────────────────────────────────────────────────
+
+def sanitize_dashes(text: str) -> str:
+    """
+    Strips em dashes and en dashes from Claude-generated text.
+    Replaces ' — ' and ' – ' (with surrounding spaces) with ', '.
+    Replaces bare — or – with ', ' (catches mid-word usage).
+    Collapses double spaces afterward.
+    """
+    if not text:
+        return text
+    text = text.replace("—", ",")   # em dash — -> ,
+    text = text.replace("–", ",")   # en dash – -> ,
+    # Clean up any ", ," or ",," artifacts
+    text = re.sub(r",\s*,", ",", text)
+    # Fix " , " -> ", "
+    text = re.sub(r"\s+,\s+", ", ", text)
+    # Collapse double spaces
+    text = re.sub(r"  +", " ", text)
+    return text.strip()
+
+
+# ── Automation type → concrete example + Swedish label ────────────────────────
+
+AUTOMATION_TYPES = {
+    "booking_scheduling": {
+        "label": "bokning och schemaläggning",
+        "example": "T.ex. kan kunder boka tid via SMS, och systemet bekräftar och påminner automatiskt.",
+    },
+    "order_invoicing": {
+        "label": "uppföljning av leveranser och fakturor",
+        "example": "T.ex. skickar systemet automatiskt påminnelser om obetalda fakturor och uppdaterar status när betalning kommer in.",
+    },
+    "customer_intake": {
+        "label": "inkommande förfrågningar och kundkontakt",
+        "example": "T.ex. svarar ett system automatiskt på vanliga frågor via chatt eller SMS, dygnet runt.",
+    },
+    "coordination_routing": {
+        "label": "koordinering och resursstyrning",
+        "example": "T.ex. kan systemet ta emot förfrågningar, sortera dem och skicka vidare till rätt person utan manuell hantering.",
+    },
+    "admin_documentation": {
+        "label": "administrativ hantering och dokumentation",
+        "example": "T.ex. kan ett system automatiskt generera och skicka bekräftelser, avtal och dokumentation.",
+    },
+    "general_admin": {
+        "label": "administrativt arbete och uppföljning",
+        "example": "T.ex. kan rutinmässig kommunikation och uppföljning skötas automatiskt utan att någon behöver göra det manuellt.",
+    },
+}
+
+
+# ── Contact extraction from description text ──────────────────────────────────
+
+_CONTACT_PATTERNS = [
+    r'[Kk]ontakta(?:person)?:?\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Hh]ar du fr[åa]gor\??\.?\s*[Kk]ontakta\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Ff]r[åa]gor.*?kontakta\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Vv]älkommen att kontakta\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Mm]er information.*?kontakta\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Rr]ekryterande.*?chef:?\s+([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+    r'[Ff]r[åa]gor om tj[äa]nsten.*?([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){1,2})',
+]
+
+# Titles/words that would falsely match as names
+_NAME_BLOCKLIST = {
+    "mer", "information", "om", "oss", "dig", "den", "det", "har", "kan",
+    "gärna", "direkt", "kontakt", "ansökan", "rekrytering", "chef",
+}
+
+
+def extract_contact_from_text(text: str) -> str | None:
+    """Extract recruiter/contact first name from posting description text."""
+    if not text:
+        return None
+    for pattern in _CONTACT_PATTERNS:
+        m = re.search(pattern, text)
+        if m:
+            full_name = m.group(1).strip()
+            parts = full_name.split()
+            if not parts:
+                continue
+            first = parts[0].lower()
+            if first in _NAME_BLOCKLIST or len(parts[0]) < 2:
+                continue
+            # Return just first name for greeting
+            return parts[0]
+    return None
+
+
+def _company_context(posting: dict) -> str:
+    """
+    Extracts a brief company context line from the posting description.
+    Takes the first non-empty sentence from the description (usually company intro).
+    """
+    text = posting.get("description_text", "")
+    if not text:
+        return ""
+    # Try to get first real sentence (up to 200 chars)
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    for s in sentences:
+        s = s.strip()
+        if 30 < len(s) < 250 and not s.startswith("Du ") and not s.startswith("Vi "):
+            return s
+    return text[:180].strip()
+
+
+# ── Scoring prompt ─────────────────────────────────────────────────────────────
 
 _SCORE_PROMPT_TEMPLATE = """\
 You are analyzing a Swedish job posting to determine what fraction of the listed tasks could be automated.
@@ -56,10 +153,18 @@ NOT AUTOMATABLE:
 - Face-to-face client interaction as the PRIMARY value (personlig assistent, hemtjänst, mötesfacilitering)
 - Strategic/creative decisions (produktutveckling, marknadsföringsstrategi, management)
 
+AUTOMATION TYPE — pick the single best match for the dominant automatable pattern:
+  "booking_scheduling"    — primary work is booking/scheduling/calendar
+  "order_invoicing"       — primary work is orders, invoicing, delivery follow-up
+  "customer_intake"       — primary work is inbound customer contact, FAQ, triage
+  "coordination_routing"  — primary work is routing tasks/people/resources
+  "admin_documentation"   — primary work is paperwork, contracts, archiving
+  "general_admin"         — mixed or none of the above fit well
+
 RULES:
 - Only count tasks EXPLICITLY listed in the posting as responsibilities/arbetsuppgifter
-- Ignore qualifications, requirements, company descriptions — only score TASKS
-- A task is automatable if MOST of what's needed is information routing, not physical action or expert judgment
+- Ignore qualifications, requirements, company descriptions
+- A task is automatable if MOST of what is needed is information routing, not physical action or expert judgment
 - Mixed tasks (e.g. "planera och genomföra event"): count as NOT automatable (physical execution required)
 - Return ONLY valid JSON, no markdown, no explanation
 
@@ -73,6 +178,7 @@ Return this exact JSON structure:
     {"task": "<short description>", "reason": "<why not>"}
   ],
   "automation_fit_score": <integer 0-100>,
+  "automation_type": "<one of the six types above>",
   "automation_angle": "<1 sentence in Swedish: what specifically could be automated>",
   "confidence": "<high or medium or low>"
 }
@@ -83,39 +189,49 @@ TEXT_PLACEHOLDER
 ---
 """
 
-_EMAIL_PROMPT = """\
-Write a short, direct cold email in Swedish from Kasper at Drivverk AB to the company "{employer_name}"
-that just posted a job ad for "{headline}".
+# ── Email prompt ───────────────────────────────────────────────────────────────
 
-Context:
-- Automation fit score: {score}%
-- Automatable tasks found: {automatable_list}
-- Automation angle: {automation_angle}
+_EMAIL_PROMPT_TEMPLATE = """\
+Write a cold outreach email in Swedish from Kasper at Drivverk AB.
 
-Email style based on score:
-{style_instruction}
+CONTEXT (use to understand the company, do NOT repeat back to them):
+  Company: EMPLOYER_NAME
+  Job posted: HEADLINE
+  Company intro (1 sentence from their posting): COMPANY_CONTEXT
+  Automation category found: AUTOMATION_TYPE_LABEL
+  Concrete example for this category: CONCRETE_EXAMPLE
+  Contact name (if available): CONTACT_NAME
 
-Rules:
-- 2-3 sentences max before sign-off
-- No generic filler like "Hoppas allt är bra" or "Mitt namn är"
-- Start directly with the observation about their posting or their specific task
-- Reference SPECIFIC tasks from the posting — not generic "administration"
-- End with sign-off: "Kasper, Drivverk AB"
-- Footer (last line): "Vill du inte bli kontaktad igen? Svara bara på det här mejlet."
-- Tone: direct, confident, curious — not salesy
+STRUCTURE — exactly 4 lines/sentences before sign-off:
+  LINE 1: Greeting + brief mention of company/role. If contact_name is set use "Hej CONTACT_NAME," else "Hej,". Then one short sentence referencing you saw their posting for that type of role. Do NOT describe what they are hiring for or what the role involves.
+  LINE 2: A GENERAL observation about that TYPE of role — not about their specific tasks. Use the automation category label. Example structure: "Den typen av roll involverar ofta mycket [AUTOMATION_TYPE_LABEL] som tar tid manuellt."
+  LINE 3: Concrete example (use exactly as provided): CONCRETE_EXAMPLE
+  LINE 4: Discovery question: "Ar det nagot som kanns relevant for er, eller har ni redan koll pa det?"
+
+Blank line.
+Sign-off (exact): Kasper, Drivverk AB
+Blank line.
+Final line (exact): Vill du inte bli kontaktad igen? Svara bara pa det har mejlet.
+
+STRICT RULES — violating these means the email fails:
+- Do NOT use em dashes or en dashes anywhere. Use comma or period instead.
+- Do NOT list or repeat their specific job tasks or responsibilities
+- Do NOT say what they are hiring for or what the role involves
+- Do NOT mention AI, bots, or technology brands
+- Do NOT use the words "automatisera" or "automation" — use "losas automatiskt" or "gar av sig sjalv" or "skots utan manuell hantering"
+- Exactly 4 lines before sign-off, then sign-off, then opt-out line
+- Write natural Swedish with proper Swedish characters (å, ä, ö)
 - Output ONLY the email text, nothing else
-
-HIGH score style: Direct — "Jag såg att ni söker [role] för att hantera [specific task] — har ni funderat på om det går att automatisera innan ni anställer?"
-MODERATE score style: Discovery — "Jag såg er annons för [role] — [specific automatable task] sticker ut som något som ofta går att lösa med automatisering. Är det den biten som tar mest tid, eller är det annat i rollen?"
 """
 
 
 def _truncate_text(text: str, max_chars: int = 4000) -> str:
     if len(text) <= max_chars:
         return text
-    # Keep beginning and relevant section
     return text[:max_chars] + "\n[...truncated]"
 
+
+# ── Score a posting ────────────────────────────────────────────────────────────
 
 def score_posting(posting: dict) -> dict | None:
     """
@@ -135,89 +251,84 @@ def score_posting(posting: dict) -> dict | None:
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
-
-        # Strip markdown code fences if present
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
-
-        data = json.loads(raw)
-        return data
+        return json.loads(raw)
 
     except (json.JSONDecodeError, Exception) as e:
         print(f"    [Scorer] Failed for '{posting.get('headline', '?')}': {e}")
         return None
 
 
+# ── Generate email ─────────────────────────────────────────────────────────────
+
 def generate_email(posting: dict, score_data: dict) -> str:
     """
-    Generates a Swedish cold email based on the score tier and automatable tasks.
+    Generates a Swedish cold email.
+    Uses general category framing (not mirrored task list).
+    Sanitizes dashes from output.
     """
-    score = score_data.get("automation_fit_score", 0)
-    auto_tasks = score_data.get("automatable_tasks", [])
-    automation_angle = score_data.get("automation_angle", "")
+    atype        = score_data.get("automation_type", "general_admin")
+    type_info    = AUTOMATION_TYPES.get(atype, AUTOMATION_TYPES["general_admin"])
+    type_label   = type_info["label"]
+    example      = type_info["example"]
 
-    automatable_list = "; ".join(t["task"] for t in auto_tasks[:4]) or "generell administration"
+    contact_name = posting.get("_contact_name") or ""
+    company_ctx  = _company_context(posting)
 
-    if score >= 75:
-        style_instruction = (
-            "HIGH score: Direct pitch. Ask if they've considered automating before hiring. "
-            "Reference the specific automatable task most prominently listed."
-        )
-    else:
-        style_instruction = (
-            "MODERATE score: Discovery angle. Reference the specific automatable task. "
-            "Ask if that's the most time-consuming part, or if there's something else."
-        )
-
-    prompt = _EMAIL_PROMPT.format(
-        employer_name=posting.get("employer_name", ""),
-        headline=posting.get("headline", ""),
-        score=score,
-        automatable_list=automatable_list,
-        automation_angle=automation_angle,
-        style_instruction=style_instruction,
+    prompt = (
+        _EMAIL_PROMPT_TEMPLATE
+        .replace("EMPLOYER_NAME",        posting.get("employer_name", ""))
+        .replace("HEADLINE",             posting.get("headline", ""))
+        .replace("COMPANY_CONTEXT",      company_ctx)
+        .replace("AUTOMATION_TYPE_LABEL", type_label)
+        .replace("CONCRETE_EXAMPLE",     example)
+        .replace("CONTACT_NAME",         contact_name or "(none)")
     )
 
     try:
         resp = _CLIENT.messages.create(
             model=_MODEL,
-            max_tokens=300,
+            max_tokens=350,
             messages=[{"role": "user", "content": prompt}],
         )
-        return resp.content[0].text.strip()
+        raw = resp.content[0].text.strip()
+        return sanitize_dashes(raw)
     except Exception as e:
         return f"[Email generation failed: {e}]"
 
 
+# ── Score all postings ─────────────────────────────────────────────────────────
+
 def score_all(postings: list[dict]) -> list[dict]:
     """
-    Scores all postings. Returns list of enriched posting dicts with score data.
-    Includes ALL postings (scored + unscored), so caller can compute full distribution.
+    Scores all postings. Extracts contact name from description before scoring.
+    Returns list of enriched posting dicts.
     """
     results = []
 
     for i, posting in enumerate(postings, 1):
         headline = posting.get("headline", "?")
         employer = posting.get("employer_name", "?")
-        print(f"  [{i}/{len(postings)}] Scoring: {headline[:50]} — {employer[:40]}...")
+        print(f"  [{i}/{len(postings)}] Scoring: {headline[:50]} -- {employer[:40]}...")
+
+        # Extract contact name from description text
+        contact = extract_contact_from_text(posting.get("description_text", ""))
+        posting["_contact_name"] = contact
 
         score_data = score_posting(posting)
 
         if score_data is None:
-            posting["score_data"] = None
+            posting["score_data"]          = None
             posting["automation_fit_score"] = 0
-            posting["bucket"] = "error"
+            posting["bucket"]               = "error"
             results.append(posting)
             continue
 
         score = score_data.get("automation_fit_score", 0)
-        posting["score_data"] = score_data
+        posting["score_data"]          = score_data
         posting["automation_fit_score"] = score
-
-        if score >= SCORE_THRESHOLD:
-            posting["bucket"] = "SEND"
-        else:
-            posting["bucket"] = "IGNORE"
+        posting["bucket"]               = "SEND" if score >= SCORE_THRESHOLD else "IGNORE"
 
         results.append(posting)
 
