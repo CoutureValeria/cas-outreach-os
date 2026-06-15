@@ -10,13 +10,35 @@
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (+ second inbox when configured)
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-## Current status as of 2026-06-14
+## Current status as of 2026-06-15
 
 ### System health
-- Fully operational — all known issues resolved
-- Imports working (last vet-intel import 09:00 UTC 2026-06-14)
-- 7 approved leads in queue, circuit ok, IMAP live
-- Railway deploy: commit `01ae348` (vet-intel: `2bc1cc9`)
+- Send cycle RESTORED — was broken June 12–15 due to DB constraint issue (see below)
+- 6 approved leads in queue, will send at 09/10/11/14 Stockholm Mon–Fri
+- Anthropic credits EXHAUSTED — email generation + Instagram/LinkedIn find blocked
+- IMAP live (polls every 30 min), circuit ok, vet-intel import running daily
+- Railway deploy: commit `ff469e2` (vet-intel: `2bc1cc9`)
+
+### Critical: Anthropic credits
+- API returns "credit balance too low" — no new emails can be generated
+- Existing 6 approved leads will SEND fine (content already generated)
+- After queue drains, pipeline stops until credits are topped up
+- Action needed: top up at https://console.anthropic.com/billing
+
+### Critical: DB constraint fix needed (Supabase SQL Editor)
+- The leads_status_check constraint is missing: 'bounced', 'out_of_office', 'sequence_complete'
+- The sent_log_type_check constraint is missing: 'followup_1', 'followup_2'
+- Current workaround: replaced 'sending' lock with in-process mutex (ff469e2)
+- Permanent fix: run this SQL at https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql
+  ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check;
+  ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN (
+    'new','generated','approved','skipped','sending','sent',
+    'no_response','bounced','opted_out','warm','out_of_office','sequence_complete'
+  ));
+  ALTER TABLE sent_log DROP CONSTRAINT IF EXISTS sent_log_type_check;
+  ALTER TABLE sent_log ADD CONSTRAINT sent_log_type_check CHECK (type IN (
+    'initial','followup','followup_1','followup_2'
+  ));
 
 ### Email sequence (3-touch)
 - **Initial (day 0):** DISCOVERY style — asks an open question about their operational pain. No solution pitch. (Changed 2026-06-14)
