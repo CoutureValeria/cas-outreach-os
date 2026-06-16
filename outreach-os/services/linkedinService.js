@@ -128,15 +128,18 @@ async function findAllDecisionMakers() {
   const todo = leads.filter(l => l.id && !doneIds.has(l.id)).slice(0, 10);
 
   const results = [];
+  const errors = [];
   for (const lead of todo) {
     try {
       const found = await findDecisionMaker(lead);
       results.push(found);
     } catch (err) {
-      console.error('[LinkedIn] findDecisionMaker failed for', lead.name || lead.clinic_name, ':', err.message);
+      const msg = `${lead.name || lead.clinic_name}: ${err.message}`;
+      console.error('[LinkedIn] findDecisionMaker failed:', msg);
+      errors.push(msg);
     }
   }
-  return results;
+  return { results, errors, todo: todo.map(l => l.name || l.id) };
 }
 
 async function getLeads(status) {

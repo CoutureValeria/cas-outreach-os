@@ -97,8 +97,8 @@ app.post('/api/linkedin/find', auth, async (req, res) => {
 // Bulk: find decision makers for all email engine leads missing a LinkedIn row
 app.post('/api/linkedin/find-all', auth, async (req, res) => {
   try {
-    const found = await linkedinService.findAllDecisionMakers();
-    res.json({ found: found.length, leads: found });
+    const { results, errors, todo } = await linkedinService.findAllDecisionMakers();
+    res.json({ found: results.length, leads: results, errors, todo });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
