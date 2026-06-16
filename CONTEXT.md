@@ -13,28 +13,25 @@
 ## Current status as of 2026-06-16
 
 ### System health
-- Send cycle live: 9 approved vet leads in queue
+- Send cycle live: 9 vet leads + 6 indeed leads approved and ready
 - vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
-- indeed lane live: 13:00/14:00 Stockholm, type='job-posting' — 15 leads in DB but NO email addresses yet (need enrichment run)
+- indeed lane: 13:00/14:00 Stockholm, type='job-posting' — 6 leads approved with emails
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `9b915d3`, outreach-os `c35be5d` (NEEDS MANUAL REDEPLOY in Railway dashboard)
+- Railway deploy: backend `eb816ed` (deployed with SUPABASE_SERVICE_ROLE_KEY), outreach-os `c35be5d`
 
 ### indeed-intel pipeline (as of 2026-06-16)
-- 15 leads pushed and typed correctly (type='job-posting'), status='new'
-- NO email addresses: Platsbanken API doesn't include employer email — need openclaw enrichment
-- To get indeed leads sending:
-  1. Run `cd indeed-intel && python main.py --enrich` (or re-run enrichment on saved results)
-  2. For each company that has an email, PATCH /api/leads/:id with { email, research_notes }
-  3. Run research+generate pipeline or approve manually via dashboard
-  4. Leads will then flow through indeed lane at 13:00/14:00
-- Lane filter: type='job-posting' (source column not in DB — was never added)
-- POST /api/admin/patch-indeed-type: one-time fix endpoint for type field (already ran 2026-06-16)
+- 15 leads pushed, type fixed to 'job-posting'
+- 6 leads enriched and approved (emails found via openclaw, emails generated, status=approved):
+  Lindalens Städ, Svea Bank, R Gruppen Hyr, Avaron, Sugbilar Sverige, Edukatus Alliance
+- 7 leads skipped (no email found) + 2 skipped (wrong email from enrichment)
+- Pipeline script: `indeed-intel/pipeline_enrich_approve.py` (re-run for any new indeed leads)
+- Lane filter: type='job-posting' (source column now being migrated — see below)
 
-### source column status
-- Source column DOES NOT EXIST in Supabase leads or sent_log tables
-- SUPABASE_SERVICE_ROLE_KEY not in Railway → migrationService.js can't run ALTER TABLE
-- Workaround: using type field ('veterinary' vs 'job-posting') as lane proxy in emailService.js
-- Lane counting: sent_log joins leads on lead_id to count by type (getTodaySentCountForLane)
+### source column status (being fixed)
+- SUPABASE_SERVICE_ROLE_KEY added to Railway backend env vars (2026-06-16)
+- Backend redeploy triggered — migrationService.js will add source column on startup
+- After migration lands: run `POST /api/admin/patch-indeed-type` (already done, sets type)
+- Workaround still active: emailService.js uses type field as lane proxy until source column confirmed
 
 ### DB constraints — FIXED 2026-06-15
 - leads_status_check now includes all statuses: sending, bounced, out_of_office, sequence_complete
@@ -75,10 +72,9 @@
 
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
-- LinkedIn: find-all fix is in GitHub (`c35be5d`) but Railway outreach-os hasn't redeployed yet
-  Fixes in code: clinic_name→name fallback, claude-opus-4-7→4-8, errors+todo in response
-  ACTION NEEDED: go to Railway dashboard → cas-outreach-os service → click Redeploy
-  Once deployed, POST /api/linkedin/find-all will return { found, leads, errors, todo }
+- LinkedIn: redeploy triggered via Railway GraphQL API (2026-06-16). Once live:
+  POST /api/linkedin/find-all → { found, leads, errors, todo }
+  Fixes included: clinic_name→name fallback, claude-opus-4-8, error surface
 
 ## City rotation framework (live as of 2026-06-14)
 
