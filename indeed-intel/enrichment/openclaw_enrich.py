@@ -1,29 +1,23 @@
 """
-Company website enrichment module (requests + BeautifulSoup4).
+Company website enrichment module (requests + BeautifulSoup4 + Claude haiku).
 
-OpenClaw is not installed in this environment. This module replicates the
-key enrichment capabilities using plain HTTP + HTML parsing:
+Fetching: requests + bs4 scrape of homepage + up to 8 subpages.
+Extraction: Claude haiku-4-5 interprets all scraped text and returns structured JSON.
+Phone/email: extracted directly from HTML (more reliable than Claude for raw strings).
 
-  - Homepage scrape: title, description, phone, email, contact form
-  - Subpage crawl: /kontakt, /om-oss, /team — finds decision maker
-  - Signal detection: booking widgets, live chat, automation opportunities
-  - Size estimation: from language clues on team/about pages
-
-Returns a dict matching the OpenClaw schema so the calling code is
-swap-ready if OpenClaw becomes available later.
-
-LIMITATION: JavaScript-rendered pages (React SPAs) return minimal content.
-The scraper handles this gracefully — it returns what it finds and notes
-the limitation in scrape_status.
+Returns a dict matching the OpenClaw schema.
 """
 
+import json
 import logging
+import os
 import re
 import time
 from typing import Optional
 from urllib.parse import urljoin, urlparse, unquote
 
 import requests
+from anthropic import Anthropic
 from bs4 import BeautifulSoup
 
 log = logging.getLogger("enrichment")
@@ -53,60 +47,42 @@ _EMAIL_RE = re.compile(
     r'\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b'
 )
 
-_BOOKING_SIGNALS = [
-    "bokadirekt.se", "timma.se", "calendly.com", "acuityscheduling.com",
-    "booksy.com", "fresha.com", "onlinebokning", "easybooking",
-    "bokningssystem", "boka tid online", "boka online", "book a time",
-    "schedule online",
-]
-
-_CHAT_SIGNALS = [
-    "intercom", "zendesk.com/chat", "tawk.to", "livechat.com",
-    "drift.com", "crisp.chat", "tidio", "freshchat",
-]
-
-_DM_TITLE_PATTERNS = [
-    r'\bVD\b', r'[Vv]erkst[äa]llande\s+[Dd]irekt[öo]r',
-    r'\b[Ää]gare\b', r'\b[Gg]rundare\b', r'\b[Ff]ounder\b', r'\bCEO\b',
-    r'\b[Mm]anaging\s+[Dd]irector\b', r'\b[Vv]erksamhetsansvarig\b',
-    r'\bChef\s+och\s+[äa]gare\b', r'\b[äÄ]gare\s+och\b',
-]
-_DM_TITLE_RE = re.compile('|'.join(_DM_TITLE_PATTERNS))
-
-_NAME_RE = re.compile(
-    r'\b([A-ZÅÄÖ][a-zåäö]{1,15}(?:\s+[A-ZÅÄÖ][a-zåäö]{1,15}){1,2})\b'
-)
-
 _SUBPATHS_TO_TRY = [
     '/om-oss', '/om-foretaget', '/om', '/about', '/about-us',
     '/team', '/our-team', '/personal', '/medarbetare', '/staff',
     '/kontakt', '/contact', '/contact-us',
 ]
 
-_INDUSTRY_HINTS = {
-    'städ': 'cleaning', 'rengöring': 'cleaning', 'städning': 'cleaning',
-    'rör': 'plumbing', 'vvs': 'plumbing',
-    'bil': 'automotive', 'fordon': 'automotive', 'däck': 'automotive', 'verkstad': 'automotive',
-    'bygg': 'construction', 'byggnation': 'construction',
-    'uthyrning': 'rental', 'hyra': 'rental', 'hyr ': 'rental',
-    'transport': 'transport', 'frakt': 'transport', 'logistik': 'logistics',
-    'restaurang': 'food', 'café': 'food', 'catering': 'food',
-    'konsult': 'consulting', 'rådgivning': 'consulting',
-    'el ': 'electrical', 'elektrisk': 'electrical', 'el-': 'electrical',
-    'fastighe': 'real_estate', 'bostäder': 'real_estate',
-    'städning': 'cleaning',
-    'redovisning': 'accounting', 'bokföring': 'accounting',
-}
+_CLAUDE_SYSTEM = (
+    "You extract structured business intelligence from raw Swedish company website text. "
+    "Return ONLY valid JSON, never guess missing data, never hallucinate. "
+    "If a field is unknown, return null.\n"
+    "Fields:\n"
+    '{"industry": "cleaning|automotive|construction|transport|food|consulting|'
+    'electrical|real_estate|accounting|rental|other or null", '
+    '"estimated_size": "solo|2-10|11-50|50+ or null", '
+    '"phone": "phone number string or null", '
+    '"email": "email address string or null", '
+    '"contact_form": true or false, '
+    '"booking_system": true or false, '
+    '"live_chat": true or false, '
+    '"decision_maker_name": "first name only or null", '
+    '"decision_maker_role": "role/title or null", '
+    '"automation_opportunities": ["opportunity 1", "opportunity 2", "..."], '
+    '"summary": "2 sentences max describing business and automation potential"}'
+)
 
-_NAME_BLOCKLIST = {
-    'kontakta', 'kontakt', 'välkommen', 'läs', 'mer', 'information',
-    'om', 'oss', 'vårt', 'vår', 'din', 'ditt', 'här', 'detta',
-    'click', 'read', 'more', 'learn',
-}
+_anthropic: Optional[Anthropic] = None
+
+
+def _client() -> Anthropic:
+    global _anthropic
+    if _anthropic is None:
+        _anthropic = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return _anthropic
 
 
 def _fetch(url: str, timeout: int = 8) -> tuple[Optional[BeautifulSoup], str]:
-    """Returns (soup, status_hint). status_hint: 'ok', 'failed', 'js_only'."""
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
@@ -114,7 +90,6 @@ def _fetch(url: str, timeout: int = 8) -> tuple[Optional[BeautifulSoup], str]:
         if 'text/html' not in ct:
             return None, 'not_html'
         soup = BeautifulSoup(resp.text, 'html.parser')
-        # Heuristic: if body text is very short, it's probably a React SPA
         body_text = soup.get_text(' ', strip=True)
         if len(body_text) < 150 and soup.find('div', id='root'):
             return soup, 'js_only'
@@ -132,12 +107,11 @@ def _fetch(url: str, timeout: int = 8) -> tuple[Optional[BeautifulSoup], str]:
 
 def _phones(soup: BeautifulSoup) -> list[str]:
     phones = []
-    # tel: links first (most reliable)
     for a in soup.find_all('a', href=re.compile(r'^tel:', re.I)):
         raw = unquote(a['href'].replace('tel:', '')).strip()
         clean = re.sub(r'\s', '', raw)
-        if clean: phones.append(raw)
-    # regex over text
+        if clean:
+            phones.append(raw)
     text = soup.get_text(' ', strip=True)
     for m in _PHONE_RE.findall(text):
         clean = re.sub(r'\s', '', m)
@@ -150,167 +124,58 @@ def _emails(soup: BeautifulSoup) -> list[str]:
     found = set()
     for a in soup.find_all('a', href=re.compile(r'^mailto:', re.I)):
         addr = a['href'].replace('mailto:', '').split('?')[0].strip().lower()
-        if '@' in addr: found.add(addr)
+        if '@' in addr:
+            found.add(addr)
     text = soup.get_text(' ', strip=True)
     for m in _EMAIL_RE.findall(text):
         ml = m.lower()
-        if any(ml.endswith(x) for x in ('.png', '.jpg', '.gif', '.svg')): continue
-        if any(x in ml for x in ('@example', '@noreply', '@sentry', '@pixel', '@w3')): continue
+        if any(ml.endswith(x) for x in ('.png', '.jpg', '.gif', '.svg')):
+            continue
+        if any(x in ml for x in ('@example', '@noreply', '@sentry', '@pixel', '@w3')):
+            continue
         found.add(ml)
     return list(found)[:2]
 
 
-def _has_contact_form(soup: BeautifulSoup) -> bool:
-    for form in soup.find_all('form'):
-        has_text_input = any(
-            i.get('type', 'text') in ('text', 'email', 'tel', '')
-            for i in form.find_all('input')
+def _extract_with_claude(all_text: str, company_name: str) -> dict:
+    snippet = all_text[:6000]
+    user_msg = f"Company: {company_name}\n\nWebsite text:\n{snippet}"
+    try:
+        resp = _client().messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            temperature=0,
+            system=_CLAUDE_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
         )
-        has_textarea = bool(form.find('textarea'))
-        if has_text_input or has_textarea:
-            return True
-    return False
-
-
-def _has_booking(soup: BeautifulSoup, raw_html: str) -> bool:
-    low = raw_html.lower()
-    return any(sig in low for sig in _BOOKING_SIGNALS)
-
-
-def _has_live_chat(raw_html: str) -> bool:
-    low = raw_html.lower()
-    return any(sig in low for sig in _CHAT_SIGNALS)
-
-
-def _estimate_size(text: str) -> str:
-    low = text.lower()
-    # Explicit count mentions
-    m = re.search(r'(\d+)\s+(?:anst[äa]llda|medarbetare|kollegor|anst[äa]llning)', low)
-    if m:
-        n = int(m.group(1))
-        if n == 1: return 'solo'
-        if n <= 10: return '2-10'
-        if n <= 50: return '11-50'
-        return '50+'
-    # Language clues
-    if any(w in low for w in ['enmansfirma', 'ensam', 'solo', 'jag driver']):
-        return 'solo'
-    if any(w in low for w in ['litet team', 'liten verksamhet', 'familjeföretag', 'vi är ett litet']):
-        return '2-10'
-    if any(w in low for w in ['snabbväxande', 'expanding', 'growing team', 'vi är nu']):
-        return '11-50'
-    return 'unknown'
-
-
-def _guess_industry(text: str) -> str:
-    low = text.lower()
-    for kw, industry in _INDUSTRY_HINTS.items():
-        if kw in low:
-            return industry
-    return ''
-
-
-def _find_decision_maker(soup: BeautifulSoup, text: str) -> tuple[str, str]:
-    """Returns (first_name_only, role_string). Empty strings if not found."""
-
-    # Strategy 1: "Name, Title" or "Name — Title" in running text
-    inline_pattern = re.compile(
-        r'([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){0,2})'
-        r'\s*[,\-–]\s*'
-        r'(VD|[Ää]gare|[Gg]rundare|CEO|[Vv]erkst[äa]llande direktör'
-        r'|[Vv]erksamhetsansvarig|[Ff]ounder|Managing Director)',
-        re.IGNORECASE
-    )
-    m = inline_pattern.search(text)
-    if m:
-        full_name = m.group(1).strip()
-        role      = m.group(2).strip()
-        first     = full_name.split()[0]
-        if first.lower() not in _NAME_BLOCKLIST and len(first) > 1:
-            return first, role
-
-    # Strategy 2: "Title: Name" or "Title — Name"
-    prefix_pattern = re.compile(
-        r'(?:VD|[Ää]gare|[Gg]rundare|CEO|Grundare|Founder)\s*[:–\-]\s*'
-        r'([A-ZÅÄÖ][a-zåäö]+(?:\s+[A-ZÅÄÖ][a-zåäö]+){0,2})',
-        re.IGNORECASE
-    )
-    m = prefix_pattern.search(text)
-    if m:
-        full_name = m.group(1).strip()
-        first     = full_name.split()[0]
-        if first.lower() not in _NAME_BLOCKLIST and len(first) > 1:
-            return first, 'owner/founder'
-
-    # Strategy 3: element proximity — find title keyword, look for adjacent name
-    for elem in soup.find_all(['h3', 'h4', 'p', 'span', 'div']):
-        elem_text = elem.get_text(' ', strip=True)
-        if not _DM_TITLE_RE.search(elem_text):
-            continue
-        # Try the element itself (e.g. "<h4>Anna Larsson, VD</h4>")
-        names = _NAME_RE.findall(elem_text)
-        for name in names:
-            first = name.split()[0]
-            if first.lower() not in _NAME_BLOCKLIST and len(first) > 2:
-                role_m = _DM_TITLE_RE.search(elem_text)
-                role   = role_m.group(0) if role_m else 'owner/founder'
-                return first, role
-        # Try previous sibling (name above, title below)
-        prev = elem.find_previous_sibling(['h3', 'h4', 'p', 'span'])
-        if prev:
-            prev_text = prev.get_text(' ', strip=True)
-            names = _NAME_RE.findall(prev_text)
-            for name in names:
-                first = name.split()[0]
-                if first.lower() not in _NAME_BLOCKLIST and len(first) > 2:
-                    role_m = _DM_TITLE_RE.search(elem_text)
-                    role   = role_m.group(0) if role_m else 'owner/founder'
-                    return first, role
-
-    return '', ''
-
-
-def _automation_opportunities(soup: BeautifulSoup, all_text: str) -> list[str]:
-    low = all_text.lower()
-    opps = []
-    if 'bokning' in low or 'boka' in low or 'book' in low:
-        opps.append('Booking/scheduling language on site')
-    if _has_contact_form(soup):
-        opps.append('Contact form present — intake/response automation possible')
-    elif 'kontaktformulär' in low or 'skriv till oss' in low:
-        opps.append('Contact form mentioned — intake automation possible')
-    if 'faktura' in low or 'betalning' in low or 'betala' in low:
-        opps.append('Invoicing/payment workflow visible')
-    if 'offert' in low or 'quote' in low or 'anbud' in low or 'prisförfrågan' in low:
-        opps.append('Quote/offer request workflow visible')
-    if 'uppföljning' in low or 'återkoppling' in low or 'follow-up' in low:
-        opps.append('Follow-up communication mentioned')
-    if 'ring oss' in low or 'telefon' in low and 'kontakta' in low:
-        opps.append('Phone-first contact model — digital triage opportunity')
-    return opps[:5]
+        raw = resp.content[0].text.strip()
+        # Strip markdown fences
+        if raw.startswith("```"):
+            parts = raw.split("```")
+            raw = parts[1] if len(parts) > 1 else raw
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw.strip())
+    except Exception as e:
+        log.warning("Claude haiku extraction failed for %s: %s", company_name, e)
+        return {}
 
 
 def enrich_company(company_name: str, website: Optional[str]) -> dict:
-    """
-    Scrapes a company website and returns an enrichment dict.
-
-    Compatible with the OpenClaw schema — swap out this function for the
-    real OpenClaw client once it's installed.
-    """
     result = {
         "company_name":             company_name,
         "website":                  website,
-        "industry":                 "",
-        "estimated_size":           "unknown",
-        "phone":                    "",
-        "email":                    "",
+        "industry":                 None,
+        "estimated_size":           None,
+        "phone":                    None,
+        "email":                    None,
         "contact_form":             False,
         "booking_system":           False,
         "live_chat":                False,
-        "decision_maker":           "",
-        "decision_maker_role":      "",
+        "decision_maker":           None,
+        "decision_maker_role":      None,
         "automation_opportunities": [],
-        "summary":                  "",
+        "summary":                  None,
         "scrape_status":            "no_website",
     }
 
@@ -319,7 +184,6 @@ def enrich_company(company_name: str, website: Optional[str]) -> dict:
         return result
 
     url = website if website.startswith('http') else f"https://{website}"
-
     log.info("Enriching: %s  (%s)", company_name, url)
 
     soup, status = _fetch(url)
@@ -329,25 +193,17 @@ def enrich_company(company_name: str, website: Optional[str]) -> dict:
         return result
     if status == 'js_only':
         result["scrape_status"] = "js_only"
-        # Continue — partial data is better than nothing
 
-    raw_html  = str(soup)
-    page_text = soup.get_text(' ', strip=True)
-    all_text  = page_text
-
-    # ── Basic extractions from homepage ──────────────────────────────────────
+    # ── Direct HTML extraction for phone/email (more reliable than Claude) ──
     phones = _phones(soup)
     emails = _emails(soup)
-    result["phone"]          = phones[0] if phones else ""
-    result["email"]          = emails[0] if emails else ""
-    result["contact_form"]   = _has_contact_form(soup)
-    result["booking_system"] = _has_booking(soup, raw_html)
-    result["live_chat"]      = _has_live_chat(raw_html)
-    result["industry"]       = _guess_industry(page_text)
-    result["estimated_size"] = _estimate_size(page_text)
+    result["phone"] = phones[0] if phones else None
+    result["email"] = emails[0] if emails else None
 
-    # ── Crawl subpages ────────────────────────────────────────────────────────
-    base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    all_text = soup.get_text(' ', strip=True)
+
+    # ── Crawl subpages ─────────────────────────────────────────────────────
+    base    = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
     visited = {url.rstrip('/'), base.rstrip('/')}
 
     for subpath in _SUBPATHS_TO_TRY[:8]:
@@ -357,62 +213,43 @@ def enrich_company(company_name: str, website: Optional[str]) -> dict:
         visited.add(sub_url.rstrip('/'))
 
         time.sleep(0.25)
-        sub_soup, sub_status = _fetch(sub_url, timeout=6)
+        sub_soup, _ = _fetch(sub_url, timeout=6)
         if not sub_soup:
             continue
 
         sub_text = sub_soup.get_text(' ', strip=True)
         all_text += ' ' + sub_text
-        sub_html = str(sub_soup)
 
         if not result["phone"]:
             ps = _phones(sub_soup)
-            if ps: result["phone"] = ps[0]
+            if ps:
+                result["phone"] = ps[0]
         if not result["email"]:
             es = _emails(sub_soup)
-            if es: result["email"] = es[0]
-        if not result["contact_form"]:
-            result["contact_form"] = _has_contact_form(sub_soup)
-        if not result["booking_system"]:
-            result["booking_system"] = _has_booking(sub_soup, sub_html)
-        if not result["live_chat"]:
-            result["live_chat"] = _has_live_chat(sub_html)
-        if result["estimated_size"] == 'unknown':
-            result["estimated_size"] = _estimate_size(sub_text)
+            if es:
+                result["email"] = es[0]
 
-        if not result["decision_maker"]:
-            dm, role = _find_decision_maker(sub_soup, sub_text)
-            if dm:
-                result["decision_maker"]      = dm
-                result["decision_maker_role"] = role
+    # ── Claude haiku extraction ────────────────────────────────────────────
+    log.info("  -> calling Claude haiku for structured extraction")
+    extracted = _extract_with_claude(all_text, company_name)
 
-    # ── Decision maker fallback: try homepage ─────────────────────────────────
-    if not result["decision_maker"]:
-        dm, role = _find_decision_maker(soup, page_text)
-        if dm:
-            result["decision_maker"]      = dm
-            result["decision_maker_role"] = role
-
-    # ── Automation opportunities ──────────────────────────────────────────────
-    result["automation_opportunities"] = _automation_opportunities(soup, all_text)
-
-    # ── Summary ───────────────────────────────────────────────────────────────
-    parts = []
-    if result["decision_maker"]:
-        parts.append(f"Decision maker: {result['decision_maker']} ({result['decision_maker_role']})")
-    else:
-        parts.append("No decision maker found on site")
-    signals = [s for s, v in [
-        ("booking system", result["booking_system"]),
-        ("contact form",   result["contact_form"]),
-        ("live chat",      result["live_chat"]),
-    ] if v]
-    if signals:
-        parts.append(f"Found: {', '.join(signals)}")
-    parts.append(f"Estimated size: {result['estimated_size']}")
-    result["summary"] = ". ".join(parts) + "."
+    if extracted:
+        result["industry"]                 = extracted.get("industry")
+        result["estimated_size"]           = extracted.get("estimated_size")
+        result["contact_form"]             = bool(extracted.get("contact_form", False))
+        result["booking_system"]           = bool(extracted.get("booking_system", False))
+        result["live_chat"]                = bool(extracted.get("live_chat", False))
+        result["decision_maker"]           = extracted.get("decision_maker_name")
+        result["decision_maker_role"]      = extracted.get("decision_maker_role")
+        result["automation_opportunities"] = extracted.get("automation_opportunities") or []
+        result["summary"]                  = extracted.get("summary")
+        # Use Claude's phone/email only as fallback
+        if not result["phone"] and extracted.get("phone"):
+            result["phone"] = extracted["phone"]
+        if not result["email"] and extracted.get("email"):
+            result["email"] = extracted["email"]
 
     if status != 'js_only':
-        result["scrape_status"] = "ok"
+        result["scrape_status"] = "ok" if extracted else status
 
     return result

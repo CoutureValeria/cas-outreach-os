@@ -10,35 +10,26 @@
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (+ second inbox when configured)
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-## Current status as of 2026-06-15
+## Current status as of 2026-06-16
 
 ### System health
-- Send cycle RESTORED — was broken June 12–15 due to DB constraint issue (see below)
-- 6 approved leads in queue, will send at 09/10/11/14 Stockholm Mon–Fri
-- Anthropic credits EXHAUSTED — email generation + Instagram/LinkedIn find blocked
-- IMAP live (polls every 30 min), circuit ok, vet-intel import running daily
-- Railway deploy: commit `ff469e2` (vet-intel: `2bc1cc9`)
+- Send cycle live: 9 approved vet leads + 15 indeed-intel leads queued
+- indeed-intel send lane live: 13:00/14:00 Stockholm, indeed-intel-v1 source tag
+- vet send lane: 09:00/10:00/11:00 Stockholm, source IS NULL
+- IMAP live, circuit ok, vet-intel import running daily
+- Railway deploy: backend `2992b53`, outreach-os `a670757`
 
-### Critical: Anthropic credits
-- API returns "credit balance too low" — no new emails can be generated
-- Existing 6 approved leads will SEND fine (content already generated)
-- After queue drains, pipeline stops until credits are topped up
-- Action needed: top up at https://console.anthropic.com/billing
+### indeed-intel pipeline (live as of 2026-06-16)
+- 15 leads pushed to email engine with source='indeed-intel-v1'
+- Send lane: 2 leads/day at 13:00/14:00 Stockholm
+- Filter: source='indeed-intel-v1' AND status='approved'
+- NOTE: 15 leads were pushed before backend source migration — source may still be null
+  Run POST /api/admin/patch-indeed-source to fix (one-time). Then remove that endpoint.
 
-### Critical: DB constraint fix needed (Supabase SQL Editor)
-- The leads_status_check constraint is missing: 'bounced', 'out_of_office', 'sequence_complete'
-- The sent_log_type_check constraint is missing: 'followup_1', 'followup_2'
-- Current workaround: replaced 'sending' lock with in-process mutex (ff469e2)
-- Permanent fix: run this SQL at https://supabase.com/dashboard/project/tjpkmonazlqmbaazcker/sql
-  ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check;
-  ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN (
-    'new','generated','approved','skipped','sending','sent',
-    'no_response','bounced','opted_out','warm','out_of_office','sequence_complete'
-  ));
-  ALTER TABLE sent_log DROP CONSTRAINT IF EXISTS sent_log_type_check;
-  ALTER TABLE sent_log ADD CONSTRAINT sent_log_type_check CHECK (type IN (
-    'initial','followup','followup_1','followup_2'
-  ));
+### DB constraints — FIXED 2026-06-15
+- leads_status_check now includes all statuses: sending, bounced, out_of_office, sequence_complete
+- sent_log_type_check now includes: followup_1, followup_2
+- Send lock uses in-process mutex (ff469e2) — simpler than DB status, correct for 1 replica
 
 ### Email sequence (3-touch)
 - **Initial (day 0):** DISCOVERY style — asks an open question about their operational pain. No solution pitch. (Changed 2026-06-14)
@@ -65,9 +56,18 @@
 - QUEUE bucket eliminated — all leads go directly to SEND or IGNORE
 - Gothenburg queries added to settings.py (2026-06-14: now API-driven, see City Rotation below)
 
+### indeed-intel enrichment
+- `indeed-intel/enrichment/openclaw_enrich.py` upgraded to Claude haiku-4-5-20251001
+- Keeps bs4 for fetching (homepage + up to 8 subpages)
+- Claude extracts: industry, size, contact_form, booking_system, live_chat, decision_maker, automation_opportunities, summary
+- Phone/email still extracted directly from HTML (more reliable)
+- Test: `python test_enrichment.py` — tests BRP Systems, Lindalens Städ, R Gruppen Hyr
+
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
-- LinkedIn: 3 leads in DB, endpoint tested and working (saves to linkedin_leads table)
+- LinkedIn: 7 rows in linkedin_leads; find-all was broken (old code on Railway, clinic_name bug)
+  Fix: pushed `a670757` to outreach-os with model update (claude-opus-4-7 → claude-opus-4-8).
+  Railway must redeploy for fix to take effect. Test: POST /api/linkedin/find-all.
 
 ## City rotation framework (live as of 2026-06-14)
 
