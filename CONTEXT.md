@@ -13,18 +13,28 @@
 ## Current status as of 2026-06-16
 
 ### System health
-- Send cycle live: 9 approved vet leads + 15 indeed-intel leads queued
-- indeed-intel send lane live: 13:00/14:00 Stockholm, indeed-intel-v1 source tag
-- vet send lane: 09:00/10:00/11:00 Stockholm, source IS NULL
+- Send cycle live: 9 approved vet leads in queue
+- vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
+- indeed lane live: 13:00/14:00 Stockholm, type='job-posting' — 15 leads in DB but NO email addresses yet (need enrichment run)
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `2992b53`, outreach-os `a670757`
+- Railway deploy: backend `9b915d3`, outreach-os `c35be5d` (NEEDS MANUAL REDEPLOY in Railway dashboard)
 
-### indeed-intel pipeline (live as of 2026-06-16)
-- 15 leads pushed to email engine with source='indeed-intel-v1'
-- Send lane: 2 leads/day at 13:00/14:00 Stockholm
-- Filter: source='indeed-intel-v1' AND status='approved'
-- NOTE: 15 leads were pushed before backend source migration — source may still be null
-  Run POST /api/admin/patch-indeed-source to fix (one-time). Then remove that endpoint.
+### indeed-intel pipeline (as of 2026-06-16)
+- 15 leads pushed and typed correctly (type='job-posting'), status='new'
+- NO email addresses: Platsbanken API doesn't include employer email — need openclaw enrichment
+- To get indeed leads sending:
+  1. Run `cd indeed-intel && python main.py --enrich` (or re-run enrichment on saved results)
+  2. For each company that has an email, PATCH /api/leads/:id with { email, research_notes }
+  3. Run research+generate pipeline or approve manually via dashboard
+  4. Leads will then flow through indeed lane at 13:00/14:00
+- Lane filter: type='job-posting' (source column not in DB — was never added)
+- POST /api/admin/patch-indeed-type: one-time fix endpoint for type field (already ran 2026-06-16)
+
+### source column status
+- Source column DOES NOT EXIST in Supabase leads or sent_log tables
+- SUPABASE_SERVICE_ROLE_KEY not in Railway → migrationService.js can't run ALTER TABLE
+- Workaround: using type field ('veterinary' vs 'job-posting') as lane proxy in emailService.js
+- Lane counting: sent_log joins leads on lead_id to count by type (getTodaySentCountForLane)
 
 ### DB constraints — FIXED 2026-06-15
 - leads_status_check now includes all statuses: sending, bounced, out_of_office, sequence_complete
@@ -65,9 +75,10 @@
 
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
-- LinkedIn: 7 rows in linkedin_leads; find-all was broken (old code on Railway, clinic_name bug)
-  Fix: pushed `a670757` to outreach-os with model update (claude-opus-4-7 → claude-opus-4-8).
-  Railway must redeploy for fix to take effect. Test: POST /api/linkedin/find-all.
+- LinkedIn: find-all fix is in GitHub (`c35be5d`) but Railway outreach-os hasn't redeployed yet
+  Fixes in code: clinic_name→name fallback, claude-opus-4-7→4-8, errors+todo in response
+  ACTION NEEDED: go to Railway dashboard → cas-outreach-os service → click Redeploy
+  Once deployed, POST /api/linkedin/find-all will return { found, leads, errors, todo }
 
 ## City rotation framework (live as of 2026-06-14)
 
@@ -136,7 +147,7 @@ Supabase pooler. Code has PGRST205 fallback so it works before migration lands.
 
 - Node.js/Express on Railway (two services: email engine backend, outreach-os)
 - Supabase (Postgres) via PostgREST and service_role JWT
-- Anthropic claude-opus-4-7 for research + email generation (web_search tool)
+- Anthropic claude-opus-4-8 for research + email generation (web_search tool)
 - Anthropic claude-haiku-4-5-20251001 for follow-up + breakup generation (cheap/fast)
 - Resend for email delivery (kasper@casautomations.com)
 - node-cron scheduling with Europe/Stockholm timezone
