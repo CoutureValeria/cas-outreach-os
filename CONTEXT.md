@@ -20,15 +20,40 @@
 - Railway deploy: backend `31b0056`, outreach-os `8a43171` (rebuilt 2026-06-17 — LinkedIn WORKING)
 - LinkedIn /api/linkedin/find: WORKING — returns lead object with Swedish connection_note
 
-### indeed-intel pipeline (as of 2026-06-16)
+### Alert emails — reduced to essentials (as of 2026-06-17)
+- Health alerts: warm lead notifications only (reply detected → Kasper gets email)
+- Weekly summary: every Sunday 18:00 Stockholm — sends pipeline stats + lead counts
+- Daily summary emails removed (too noisy)
+
+### indeed-intel pipeline (as of 2026-06-17)
 - 15 leads pushed, type fixed to 'job-posting'
-- 6 leads enriched and approved (emails found via openclaw, emails generated, status=approved):
+- 6 leads enriched and approved (emails found, emails generated, status=approved):
   Lindalens Städ, Svea Bank, R Gruppen Hyr, Avaron, Sugbilar Sverige, Edukatus Alliance
 - 7 leads skipped (no email found) + 2 skipped (wrong email from enrichment)
 - Pipeline script: `indeed-intel/pipeline_enrich_approve.py` (re-run for any new indeed leads)
 - Lane filter: type='job-posting' (source column now being migrated — see below)
 
-### source column status — needs 1 manual step
+### indeed-intel enrichment intelligence (built 2026-06-17)
+- **New module:** `indeed-intel/enrichment/` — full structured extraction pipeline
+  - `schema.py`    — canonical nested schema: contact{}, decision_maker{}, signals{}
+  - `prompt.py`    — strict Swedish SMB extraction prompt (no hallucination, null if missing)
+  - `extractor.py` — claude-haiku-4-5-20251001, temp=0, 600 tokens
+  - `scoring.py`   — 0–100 automation score:
+      booking_system +25 | manual_workflows +20 | appointment_heavy +25
+      recruitment_active +10 | no_phone_and_email +10 | opportunities +20
+  - `pipeline.py`  — orchestrates extractor + scorer → {data, automation_score, source_url, extraction_success}
+- **OpenClaw bridge:** `indeed-intel/collectors/openclaw_client.py`
+  - Primary: POSTs to `http://localhost:8888/api/session/webchat/invoke` (30s timeout, 1 retry)
+  - Fallback: requests + BeautifulSoup crawl (homepage + 8 subpages) — CURRENTLY ACTIVE
+  - OpenClaw Hostinger URL not yet configured → bs4 fallback handling all fetches
+  - `get_page_text(url)` is the public API
+- **main.py integration:** Phase 2.5 enriches all SEND leads after task scoring, before push
+  - Enrichment data merged into research_notes in webhook payload
+  - decision_maker.name set as contact_name for email greeting
+- **Deleted:** `enrichment/openclaw_enrich.py` (replaced by new module)
+- **Test:** `python test_enrichment_pipeline.py` — tested Smartchain (score 40, dm=Jens), Lindalens (score 100), Nord Armering (score 50)
+
+### source column status — needs 1 manual step (optional)
 - SUPABASE_SERVICE_ROLE_KEY is now in Railway (added 2026-06-16)
 - migrationService.js can't reach Supabase pooler from Railway (tenant not found error)
 - emailService.js uses type field as proxy — sends work correctly without source column
@@ -69,13 +94,6 @@
 - Medium-signal leads included (was hard-filtered out)
 - QUEUE bucket eliminated — all leads go directly to SEND or IGNORE
 - Gothenburg queries added to settings.py (2026-06-14: now API-driven, see City Rotation below)
-
-### indeed-intel enrichment
-- `indeed-intel/enrichment/openclaw_enrich.py` upgraded to Claude haiku-4-5-20251001
-- Keeps bs4 for fetching (homepage + up to 8 subpages)
-- Claude extracts: industry, size, contact_form, booking_system, live_chat, decision_maker, automation_opportunities, summary
-- Phone/email still extracted directly from HTML (more reliable)
-- Test: `python test_enrichment.py` — tests BRP Systems, Lindalens Städ, R Gruppen Hyr
 
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
@@ -163,7 +181,7 @@ Supabase pooler. Code has PGRST205 fallback so it works before migration lands.
 - DAILY_LIMIT = 4 (counts all outgoing emails: initial + follow-ups combined)
 - Daily pipeline: 08:00 Mon-Fri Stockholm (research + generate for imported leads)
 - Health check: every 6h UTC
-- Daily summary: 18:00 Mon-Fri Stockholm
+- Weekly summary: Sunday 18:00 Stockholm (pipeline stats + lead counts)
 - IMAP poll: every 30 minutes (all configured inboxes in parallel)
 
 ## Key env vars (Railway — backend)
