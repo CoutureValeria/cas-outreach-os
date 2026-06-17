@@ -17,31 +17,23 @@ System deployed on:
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-Current status as of 2026-06-17:
+Current status as of 2026-06-18:
 - Full system operational end to end
 - 20-city rotation framework live (Stockholm + Gothenburg active, 18 queued)
 - Discovery-style initial emails live (questions, not pitches)
-- indeed-intel enrichment intelligence module built and live
-- OpenClaw bridge built — using bs4 fallback (Hostinger URL not yet configured)
+- indeed-intel enrichment intelligence module live + scoring fixed
+- OpenClaw bridge: reads OPENCLAW_URL from env — set it in indeed-intel/.env when ready
+- indeed-intel now covers Stockholm + Gothenburg (CITY_SEARCH_CONFIGS)
+- Follow-up + breakup sequence now covers both vet AND indeed leads (job-posting type)
 - LinkedIn working after Railway rebuild (commit 8a43171)
 - Alert emails: warm lead notification only + weekly Sunday summary
 
 Next-session priorities:
 
-1. CONFIGURE OPENCLAW HOSTINGER URL
-   - OpenClaw is deployed on Hostinger but URL not yet set in openclaw_client.py
-   - File: indeed-intel/collectors/openclaw_client.py, line: _OPENCLAW_URL = "http://localhost:8888/..."
-   - Replace localhost:8888 with the real Hostinger URL
-   - After setting: test with python test_enrichment_pipeline.py — OpenClaw should take over from bs4
-   - If OpenClaw returns richer text than bs4, enrichment quality will improve significantly
-
-2. REVIEW LINDALENS SCORING LOGIC (booking_system signal direction)
-   - Lindalens Städ scored 100/100 on automation score — check if that's directionally correct
-   - booking_system=True gives +25, but a company ALREADY having a booking system may need LESS automation
-   - Consider whether booking_system should signal "we handle lots of bookings" (high automation need)
-     vs "we already have it covered" (low automation need)
-   - Current logic: booking_system=True → +25 (treats it as "appointment-heavy business")
-   - If the signal is misleading for outreach targeting, invert or remove it from the score
+1. SET OPENCLAW_URL
+   - Set OPENCLAW_URL=https://your-hostinger-url/api/session/webchat/invoke in indeed-intel/.env
+   - Two paths now available: get_page_text() (raw text + Claude Haiku) and get_company_json() (CAS prompt → JSON)
+   - After setting: run python test_enrichment_pipeline.py to confirm OpenClaw takes over from bs4
 
 3. MONITOR FIRST WEEK OF INDEED-INTEL SENDS FOR REPLY DATA
    - 6 indeed leads are now approved and in the send queue (13:00/14:00 slot)

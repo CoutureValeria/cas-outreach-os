@@ -22,6 +22,7 @@ from config.settings import (
     PLATSBANKEN_BASE,
     MUNICIPALITY_STOCKHOLM,
     SEARCH_QUERIES,
+    CITY_SEARCH_CONFIGS,
     RESULTS_PER_QUERY,
     AGENCY_BLOCKLIST,
     GOV_ORG_PREFIXES,
@@ -136,65 +137,79 @@ def _posting_from_hit(hit: dict) -> dict | None:
     }
 
 
-def fetch_postings(max_per_query: int = RESULTS_PER_QUERY) -> list[dict]:
+def fetch_postings(max_per_query: int = RESULTS_PER_QUERY, cities: list[str] | None = None) -> list[dict]:
     """
-    Fetches postings from Platsbanken using all configured search queries.
-    Deduplicates by posting ID.
+    Fetches postings from Platsbanken across all configured city configs.
+    Deduplicates by posting ID across all cities.
     Applies agency + government + enterprise filters before returning.
+
+    cities: optional list of city names to restrict (e.g. ["Gothenburg"]).
+            If None, all cities in CITY_SEARCH_CONFIGS are fetched.
     """
     seen_ids: set[str] = set()
     results: list[dict] = []
     filter_counts = {"agency": 0, "government": 0, "large enterprise": 0, "non-profit/union": 0, "short text": 0}
 
-    for query in SEARCH_QUERIES:
-        print(f"  [Platsbanken] Fetching: '{query}' (max {max_per_query})...")
-        try:
-            resp = _SESSION.get(
-                PLATSBANKEN_BASE,
-                params={
-                    "q":                       query,
-                    "municipality-concept-id": MUNICIPALITY_STOCKHOLM,
-                    "limit":                   max_per_query,
-                    "offset":                  0,
-                },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            hits = data.get("hits", [])
+    city_configs = CITY_SEARCH_CONFIGS
+    if cities:
+        city_configs = [c for c in CITY_SEARCH_CONFIGS if c["name"] in cities]
 
-            accepted = 0
-            for hit in hits:
-                posting_id = hit.get("id", "")
-                if posting_id in seen_ids:
-                    continue
-                seen_ids.add(posting_id)
+    for city_cfg in city_configs:
+        city_name      = city_cfg["name"]
+        municipality_id = city_cfg["municipality_id"]
+        queries        = city_cfg["queries"]
 
-                employer  = hit.get("employer", {}) or {}
-                org_num   = employer.get("organization_number", "") or ""
-                emp_name  = employer.get("name", "")
+        print(f"\n  [Platsbanken] City: {city_name} ({municipality_id})")
 
-                reason = _filter_reason(emp_name, org_num)
-                if reason:
-                    filter_counts[reason] = filter_counts.get(reason, 0) + 1
-                    continue
+        for query in queries:
+            print(f"    Fetching: '{query}' (max {max_per_query})...")
+            try:
+                resp = _SESSION.get(
+                    PLATSBANKEN_BASE,
+                    params={
+                        "q":                       query,
+                        "municipality-concept-id": municipality_id,
+                        "limit":                   max_per_query,
+                        "offset":                  0,
+                    },
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                hits = data.get("hits", [])
 
-                posting = _posting_from_hit(hit)
-                if posting:
-                    results.append(posting)
-                    accepted += 1
-                else:
-                    filter_counts["short text"] += 1
+                accepted = 0
+                for hit in hits:
+                    posting_id = hit.get("id", "")
+                    if posting_id in seen_ids:
+                        continue
+                    seen_ids.add(posting_id)
 
-            total_available = data.get("total", {}).get("value", 0)
-            print(f"    -> {accepted} accepted / {len(hits)} fetched  (total available: {total_available})")
-            time.sleep(0.3)
+                    employer  = hit.get("employer", {}) or {}
+                    org_num   = employer.get("organization_number", "") or ""
+                    emp_name  = employer.get("name", "")
 
-        except Exception as e:
-            print(f"    [ERROR] Query failed: {e}")
-            continue
+                    reason = _filter_reason(emp_name, org_num)
+                    if reason:
+                        filter_counts[reason] = filter_counts.get(reason, 0) + 1
+                        continue
 
-    print(f"\n  [Platsbanken] Accepted: {len(results)} | Filtered out:")
+                    posting = _posting_from_hit(hit)
+                    if posting:
+                        results.append(posting)
+                        accepted += 1
+                    else:
+                        filter_counts["short text"] += 1
+
+                total_available = data.get("total", {}).get("value", 0)
+                print(f"      -> {accepted} accepted / {len(hits)} fetched  (total available: {total_available})")
+                time.sleep(0.3)
+
+            except Exception as e:
+                print(f"      [ERROR] Query failed: {e}")
+                continue
+
+    print(f"\n  [Platsbanken] Total accepted: {len(results)} | Filtered out:")
     for reason, count in filter_counts.items():
         if count:
             print(f"    {reason}: {count}")

@@ -8,6 +8,7 @@ Timeout: 30s. Retries once on failure.
 """
 
 import logging
+import os
 import time
 from typing import Optional
 from urllib.parse import urljoin, urlparse
@@ -17,7 +18,7 @@ from bs4 import BeautifulSoup
 
 log = logging.getLogger("openclaw_client")
 
-_OPENCLAW_URL = "http://localhost:8888/api/session/webchat/invoke"
+_OPENCLAW_URL = os.environ.get("OPENCLAW_URL", "").strip() or None
 _TIMEOUT = 30
 
 _HEADERS = {
@@ -36,7 +37,45 @@ _SUBPATHS_TO_TRY = [
 ]
 
 
+_OPENCLAW_CAS_PROMPT = """You are a lead research agent for CAS Automations (Drivverk AB), \
+a Swedish AI automation agency that helps SMBs automate repetitive manual work — specifically: \
+phone/booking intake, customer follow-up, order processing, scheduling, and administrative workflows.
+
+Your job is to research this company website and identify:
+1. What manual, repetitive work they likely do every day
+2. Whether they handle customer bookings or appointments manually
+3. Whether they have live chat, contact forms, or phone as their main contact method
+4. Any visible team members who appear to be owners, founders, or decision-makers \
+(NOT HR, NOT marketing, NOT receptionists)
+5. Company size signals (solo, 2-10, 11-50, 50+)
+
+Visit the homepage, about page, contact page, and team page.
+Ignore cookie banners and popups.
+Focus on: what does this company actually DO day to day, \
+and where does manual human work slow them down?
+
+Return ONLY this JSON:
+{
+  "industry": "",
+  "estimated_size": "",
+  "phone": "",
+  "email": "",
+  "contact_form": false,
+  "booking_system": false,
+  "live_chat": false,
+  "decision_maker_name": "",
+  "decision_maker_role": "",
+  "automation_opportunities": [],
+  "summary": ""
+}
+
+If a field cannot be verified from the website, return null. \
+Never guess. Never hallucinate names or contact details."""
+
+
 def _openclaw_fetch(url: str) -> Optional[str]:
+    if not _OPENCLAW_URL:
+        return None
     payload = {
         "message": (
             "Visit this URL and extract all visible text content from the page including: "
@@ -57,6 +96,37 @@ def _openclaw_fetch(url: str) -> Optional[str]:
             log.debug("OpenClaw attempt %d: status=%s empty=%s", attempt, resp.status_code, not resp.text.strip())
         except Exception as e:
             log.debug("OpenClaw attempt %d failed: %s", attempt, e)
+        if attempt < 2:
+            time.sleep(2)
+    return None
+
+
+def _openclaw_enrich(url: str) -> Optional[dict]:
+    """
+    Uses the CAS-specific research prompt to extract structured company data via OpenClaw.
+    Returns a parsed dict on success, None on failure or when OpenClaw is not configured.
+    """
+    if not _OPENCLAW_URL:
+        return None
+    payload = {
+        "message": _OPENCLAW_CAS_PROMPT,
+        "url": url,
+        "expectJsonReply": True,
+    }
+    import json as _json
+    for attempt in range(1, 3):
+        try:
+            resp = requests.post(_OPENCLAW_URL, json=payload, timeout=_TIMEOUT)
+            if resp.status_code == 200:
+                raw = resp.text.strip()
+                if raw:
+                    try:
+                        return _json.loads(raw)
+                    except _json.JSONDecodeError:
+                        log.debug("OpenClaw enrich: JSON parse failed, raw=%s", raw[:200])
+            log.debug("OpenClaw enrich attempt %d: status=%s", attempt, resp.status_code)
+        except Exception as e:
+            log.debug("OpenClaw enrich attempt %d failed: %s", attempt, e)
         if attempt < 2:
             time.sleep(2)
     return None
@@ -133,3 +203,26 @@ def get_page_text(url: str) -> Optional[str]:
 
     log.warning("  Both fetch methods failed for %s", url)
     return None
+
+
+def get_company_json(url: str) -> Optional[dict]:
+    """
+    Fetch structured company intelligence using the CAS research prompt via OpenClaw.
+    Returns a dict with the CAS JSON schema on success, None if OpenClaw is not configured
+    or the request fails. Falls back to None — callers should use get_page_text() + Claude
+    Haiku extraction as the fallback path.
+    """
+    if not url:
+        return None
+
+    url = url.strip()
+    if not url.startswith("http"):
+        url = f"https://{url}"
+
+    log.info("OpenClaw enrichment (CAS prompt): %s", url)
+    result = _openclaw_enrich(url)
+    if result:
+        log.info("  OpenClaw enrich: success")
+    else:
+        log.info("  OpenClaw enrich: failed or not configured")
+    return result

@@ -10,7 +10,7 @@
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (+ second inbox when configured)
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-## Current status as of 2026-06-17
+## Current status as of 2026-06-18
 
 ### System health
 - Send cycle live: 9 vet leads + 6 indeed leads approved and ready
@@ -33,25 +33,37 @@
 - Pipeline script: `indeed-intel/pipeline_enrich_approve.py` (re-run for any new indeed leads)
 - Lane filter: type='job-posting' (source column now being migrated — see below)
 
-### indeed-intel enrichment intelligence (built 2026-06-17)
-- **New module:** `indeed-intel/enrichment/` — full structured extraction pipeline
+### indeed-intel enrichment intelligence (updated 2026-06-18)
+- **Module:** `indeed-intel/enrichment/` — full structured extraction pipeline
   - `schema.py`    — canonical nested schema: contact{}, decision_maker{}, signals{}
   - `prompt.py`    — strict Swedish SMB extraction prompt (no hallucination, null if missing)
   - `extractor.py` — claude-haiku-4-5-20251001, temp=0, 600 tokens
-  - `scoring.py`   — 0–100 automation score:
-      booking_system +25 | manual_workflows +20 | appointment_heavy +25
-      recruitment_active +10 | no_phone_and_email +10 | opportunities +20
+  - `scoring.py`   — 0–100 automation score (FIXED 2026-06-18):
+      booking_system present → -10 (already solved, no pain)
+      booking_system absent + appointment_heavy → +35 (high pain)
+      booking_system absent + NOT appointment_heavy → +15 (generic manual pain)
+      manual_workflows +20 | recruitment_active +10 | no_phone_and_email +10 | opportunities +20
   - `pipeline.py`  — orchestrates extractor + scorer → {data, automation_score, source_url, extraction_success}
-- **OpenClaw bridge:** `indeed-intel/collectors/openclaw_client.py`
-  - Primary: POSTs to `http://localhost:8888/api/session/webchat/invoke` (30s timeout, 1 retry)
-  - Fallback: requests + BeautifulSoup crawl (homepage + 8 subpages) — CURRENTLY ACTIVE
-  - OpenClaw Hostinger URL not yet configured → bs4 fallback handling all fetches
-  - `get_page_text(url)` is the public API
+- **OpenClaw bridge:** `indeed-intel/collectors/openclaw_client.py` (updated 2026-06-18)
+  - Reads `OPENCLAW_URL` from env var (not hardcoded localhost)
+  - Set `OPENCLAW_URL=https://your-hostinger/api/session/webchat/invoke` in `indeed-intel/.env`
+  - `get_page_text(url)` — raw text path (OpenClaw generic prompt → bs4 fallback)
+  - `get_company_json(url)` — NEW: CAS-specific research prompt, returns structured JSON directly
+      Uses `_OPENCLAW_CAS_PROMPT` — full CAS lead researcher persona, visits 4 page types,
+      returns JSON with phone/email/booking_system/decision_maker/automation_opportunities
+      Falls back to None → callers use get_page_text + Claude Haiku as fallback
+  - Currently: OPENCLAW_URL not set → bs4 fallback active for all fetches
+- **Gothenburg added** (2026-06-18): `indeed-intel/config/settings.py`
+  - `MUNICIPALITY_GOTHENBURG = "1480"` + `GOTHENBURG_QUERIES` (7 query types)
+  - `CITY_SEARCH_CONFIGS` list — Stockholm + Gothenburg both active
+  - `platsbanken.py` `fetch_postings()` now iterates all city configs
+  - Test fetch: 29 Gothenburg postings passed filters (18 agency, 1 gov, 1 enterprise filtered)
+  - `fetch_postings(cities=['Gothenburg'])` to fetch single city
 - **main.py integration:** Phase 2.5 enriches all SEND leads after task scoring, before push
   - Enrichment data merged into research_notes in webhook payload
   - decision_maker.name set as contact_name for email greeting
-- **Deleted:** `enrichment/openclaw_enrich.py` (replaced by new module)
-- **Test:** `python test_enrichment_pipeline.py` — tested Smartchain (score 40, dm=Jens), Lindalens (score 100), Nord Armering (score 50)
+- **Test scores** (after scoring fix 2026-06-18):
+  - Smartchain: 55 (was 40) | Lindalens: 40 (was 100) | Nord Armering: 65 (was 50)
 
 ### source column status — needs 1 manual step (optional)
 - SUPABASE_SERVICE_ROLE_KEY is now in Railway (added 2026-06-16)
@@ -73,8 +85,13 @@
 ### Email sequence (3-touch)
 - **Initial (day 0):** DISCOVERY style — asks an open question about their operational pain. No solution pitch. (Changed 2026-06-14)
 - **Follow-up (day 5):** Solution-oriented, references research_notes pain signal, "Fortfarande värt en titt?"
-- **Breakup (day 10):** "Jag förstår om timing inte är rätt just nu." + one of two closing lines
+  - Vet leads: clinic-specific, references missed bookings / clients going elsewhere
+  - Indeed leads (type=job-posting): references job posting angle, hiring for manual work, cost of hiring vs automating
+- **Breakup (day 10):** "Jag förstår om timing inte är rätt just nu." + closing line
+  - Vet leads: choice of 2 lines (months? or specific issue?)
+  - Indeed leads (type=job-posting): exact line "Vill du att jag hör av mig igen om 2-3 månader, eller passar det bättre att ni löser det internt först?"
 - After breakup: status = `sequence_complete`, re_engage_after = now+90d
+- `sendDueFollowUps()` and `sendDueFollowUp2s()` pick up ALL sent leads (vet + indeed), route by `lead.type`
 - PGRST205 fallback active (migrationService.js adds columns at startup via Supabase pooler probe)
 - /api/test/status shows `sequence_complete` count + `breakup_sent_7d`
 

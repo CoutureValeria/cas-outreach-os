@@ -17,8 +17,9 @@ if not EMAIL_ENGINE_API_KEY:
 # ── Platsbanken API ───────────────────────────────────────────────────────────
 PLATSBANKEN_BASE = "https://jobsearch.api.jobtechdev.se/search"
 
-# Stockholm municipality concept ID
-MUNICIPALITY_STOCKHOLM = "0180"
+# Municipality concept IDs
+MUNICIPALITY_STOCKHOLM  = "0180"
+MUNICIPALITY_GOTHENBURG = "1480"
 
 SEARCH_QUERIES = [
     "koordinator planering administration",
@@ -29,6 +30,22 @@ SEARCH_QUERIES = [
     "sekreterare administration",
     "kundservice inkommande",
     "schemaläggning personal",
+]
+
+GOTHENBURG_QUERIES = [
+    "receptionist Göteborg",
+    "kundtjänstmedarbetare Göteborg",
+    "bokningsansvarig Göteborg",
+    "administratör Göteborg",
+    "koordinator Göteborg",
+    "orderhantering Göteborg",
+    "innesäljare Göteborg",
+]
+
+# Ordered list of city configs — add new cities here to expand coverage
+CITY_SEARCH_CONFIGS = [
+    {"name": "Stockholm",  "municipality_id": MUNICIPALITY_STOCKHOLM,  "queries": SEARCH_QUERIES},
+    {"name": "Gothenburg", "municipality_id": MUNICIPALITY_GOTHENBURG, "queries": GOTHENBURG_QUERIES},
 ]
 
 RESULTS_PER_QUERY = 20
