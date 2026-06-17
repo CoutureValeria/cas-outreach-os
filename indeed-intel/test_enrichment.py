@@ -16,7 +16,30 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from enrichment.openclaw_enrich import enrich_company
+from collectors.openclaw_client import get_page_text as _get_page_text
+from enrichment.pipeline import run_pipeline as _run_pipeline
+
+
+def enrich_company(company_name, website):
+    if not website:
+        return {"decision_maker": None, "decision_maker_role": None, "email": None}
+    raw = _get_page_text(website)
+    if not raw:
+        return {"decision_maker": None, "decision_maker_role": None, "email": None}
+    result = _run_pipeline(raw, website)
+    data = result.get("data") or {}
+    contact = data.get("contact") or {}
+    dm = data.get("decision_maker") or {}
+    return {
+        "industry": data.get("industry"), "estimated_size": data.get("estimated_size"),
+        "phone": contact.get("phone"), "email": contact.get("email"),
+        "contact_form": contact.get("contact_form", False),
+        "booking_system": contact.get("booking_system", False),
+        "live_chat": contact.get("live_chat", False),
+        "decision_maker": dm.get("name"), "decision_maker_role": dm.get("role"),
+        "automation_opportunities": data.get("automation_opportunities") or [],
+        "summary": data.get("summary"), "scrape_status": "ok",
+    }
 from scoring.task_scorer import generate_email, AUTOMATION_TYPES
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "results_20260615_174405.json")

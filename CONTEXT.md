@@ -10,14 +10,15 @@
 - Reply detection: Gmail IMAP kaplelbackman@gmail.com (+ second inbox when configured)
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
-## Current status as of 2026-06-16
+## Current status as of 2026-06-17
 
 ### System health
 - Send cycle live: 9 vet leads + 6 indeed leads approved and ready
 - vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
 - indeed lane: 13:00/14:00 Stockholm, type='job-posting' — 6 leads approved with emails
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `31b0056`, outreach-os `c35be5d` (stuck on old cached build — needs manual reconnect)
+- Railway deploy: backend `31b0056`, outreach-os `8a43171` (rebuilt 2026-06-17 — LinkedIn WORKING)
+- LinkedIn /api/linkedin/find: WORKING — returns lead object with Swedish connection_note
 
 ### indeed-intel pipeline (as of 2026-06-16)
 - 15 leads pushed, type fixed to 'job-posting'
@@ -78,12 +79,9 @@
 
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
-- LinkedIn: code is fixed in GitHub (commit c35be5d) but Railway can't rebuild outreach-os
-  (GitHub webhook not wired — service was created via API, not dashboard)
-  TO FIX: open Railway dashboard → cas-outreach-os service → Settings → Source
-  → click Disconnect, then reconnect CoutureValeria/cas-outreach-os repo (branch: master)
-  OR: run `railway login` in terminal, then from outreach-os/ dir: `railway up`
-  Fixes in code: clinic_name→name fallback, claude-opus-4-8, errors+todo in response
+- LinkedIn: WORKING as of 2026-06-17 — outreach-os rebuilt from commit 8a43171
+  Endpoint: POST /api/linkedin/find — returns {lead: {..., connection_note, status}}
+  Fix used: serviceInstanceDeploy(serviceId, environmentId, latestCommit:true) via Railway GraphQL
 
 ## City rotation framework (live as of 2026-06-14)
 

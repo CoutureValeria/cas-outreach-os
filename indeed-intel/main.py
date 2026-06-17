@@ -26,8 +26,10 @@ import os
 from datetime import datetime
 
 from collectors.platsbanken import fetch_postings
+from collectors.openclaw_client import get_page_text
 from scoring.task_scorer    import score_all, generate_email
 from exporters.webhook_client import send_all
+from enrichment.pipeline import run_pipeline
 from config.settings import DATA_DIR, SCORE_THRESHOLD, RESULTS_PER_QUERY
 
 
@@ -155,6 +157,43 @@ def run(max_per_query: int = RESULTS_PER_QUERY, push: bool = False) -> dict:
     for label in ["HIGH", "MODERATE", "LOW", "NONE"]:
         if label in examples:
             _print_example(label, examples[label])
+
+    # Phase 2.5: Website enrichment for SEND leads
+    print(f"\n--- Phase 2.5: Website enrichment for {len(send_leads)} SEND leads ---")
+    enriched_count = 0
+    for lead in send_leads:
+        website = lead.get("employer_url")
+        if not website:
+            print(f"  SKIP (no website): {lead.get('employer_name', '?')}")
+            continue
+
+        raw_text = get_page_text(website)
+        if not raw_text:
+            print(f"  SKIP (fetch failed): {lead.get('employer_name', '?')}")
+            lead["_enrichment"] = None
+            continue
+
+        enrich = run_pipeline(raw_text, str(website))
+        lead["_enrichment"] = enrich
+
+        dm_name = None
+        if enrich.get("extraction_success"):
+            dm = (enrich.get("data") or {}).get("decision_maker") or {}
+            dm_name = dm.get("name")
+            if dm_name and not lead.get("_contact_name"):
+                lead["_contact_name"] = dm_name
+            enriched_count += 1
+
+        print(
+            f"  {lead.get('employer_name', '?')[:40]}: "
+            f"page={len(raw_text)} chars | "
+            f"page_preview={repr(raw_text[:200])} | "
+            f"score={enrich.get('automation_score', 0)} | "
+            f"dm={dm_name or 'none'} | "
+            f"success={enrich.get('extraction_success')}"
+        )
+
+    print(f"\n  Enrichment complete: {enriched_count}/{len(send_leads)} successful")
 
     # Save results
     os.makedirs(DATA_DIR, exist_ok=True)

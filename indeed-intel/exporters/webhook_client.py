@@ -65,14 +65,24 @@ def _build_import_payload(posting: dict, score_data: dict) -> dict:
     pain_snippet = auto_tasks[0]["task"] if auto_tasks else ""
     auto_task_names = [t["task"] for t in auto_tasks]
 
+    enrich = posting.get("_enrichment") or {}
+    enrich_data = enrich.get("data") or {}
+    enrich_contact = enrich_data.get("contact") or {}
+    enrich_dm = enrich_data.get("decision_maker") or {}
+
+    # Prefer enrichment contact info over raw posting data
+    phone   = enrich_contact.get("phone")   or posting.get("employer_phone")
+    email   = enrich_contact.get("email")   or posting.get("employer_email")
+    contact_name = posting.get("_contact_name") or enrich_dm.get("name")
+
     return {
         "name":            posting.get("employer_name", ""),
         "area":            posting.get("city", "Stockholm"),
         "address":         posting.get("street_address", ""),
-        "phone":           posting.get("employer_phone"),
+        "phone":           phone,
         "website":         posting.get("employer_url"),
-        "email":           posting.get("employer_email"),
-        "contact_name":    None,
+        "email":           email,
+        "contact_name":    contact_name,
         "email_priority":  "generic",
         "lead_score":      score_data.get("automation_fit_score", 0),
         "pain_score":      score_data.get("automation_fit_score", 0),
@@ -82,13 +92,14 @@ def _build_import_payload(posting: dict, score_data: dict) -> dict:
         "signal_categories": ["booking_scheduling"] if auto_tasks else [],
         "pain_snippet":    pain_snippet,
         "source":          "indeed-intel-v1",
-        # Extra context for future email engine prompt
         "research_notes":  json.dumps({
-            "job_headline":       posting.get("headline", ""),
-            "posting_url":        posting.get("webpage_url", ""),
-            "automatable_tasks":  auto_task_names,
-            "automation_angle":   score_data.get("automation_angle", ""),
-            "automation_score":   score_data.get("automation_fit_score", 0),
+            "job_headline":              posting.get("headline", ""),
+            "posting_url":               posting.get("webpage_url", ""),
+            "automatable_tasks":         auto_task_names,
+            "automation_angle":          score_data.get("automation_angle", ""),
+            "automation_score":          score_data.get("automation_fit_score", 0),
+            "website_enrichment":        enrich_data,
+            "website_automation_score":  enrich.get("automation_score", 0),
         }, ensure_ascii=False),
     }
 

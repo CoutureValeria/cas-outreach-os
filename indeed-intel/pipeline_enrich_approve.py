@@ -26,7 +26,56 @@ from anthropic import Anthropic
 
 # Add parent for enrichment import
 sys.path.insert(0, os.path.dirname(__file__))
-from enrichment.openclaw_enrich import enrich_company
+from collectors.openclaw_client import get_page_text
+from enrichment.pipeline import run_pipeline as _run_enrichment_pipeline
+
+
+def enrich_company(company_name: str, website: str | None) -> dict:
+    """Adapter: run new enrichment pipeline and return flat dict matching old interface."""
+    blank = {
+        "company_name": company_name, "website": website,
+        "industry": None, "estimated_size": None,
+        "phone": None, "email": None,
+        "contact_form": False, "booking_system": False, "live_chat": False,
+        "decision_maker": None, "decision_maker_role": None,
+        "automation_opportunities": [], "summary": None,
+        "scrape_status": "no_website",
+    }
+    if not website:
+        blank["summary"] = "No website — enrichment skipped."
+        return blank
+
+    raw_text = get_page_text(website)
+    if not raw_text:
+        blank["scrape_status"] = "fetch_failed"
+        blank["summary"] = "Website fetch failed."
+        return blank
+
+    result = _run_enrichment_pipeline(raw_text, website)
+    if not result.get("extraction_success"):
+        blank["scrape_status"] = "extraction_failed"
+        return blank
+
+    data = result["data"] or {}
+    contact = data.get("contact") or {}
+    dm = data.get("decision_maker") or {}
+
+    return {
+        "company_name":             company_name,
+        "website":                  website,
+        "industry":                 data.get("industry"),
+        "estimated_size":           data.get("estimated_size"),
+        "phone":                    contact.get("phone"),
+        "email":                    contact.get("email"),
+        "contact_form":             bool(contact.get("contact_form", False)),
+        "booking_system":           bool(contact.get("booking_system", False)),
+        "live_chat":                bool(contact.get("live_chat", False)),
+        "decision_maker":           dm.get("name"),
+        "decision_maker_role":      dm.get("role"),
+        "automation_opportunities": data.get("automation_opportunities") or [],
+        "summary":                  data.get("summary"),
+        "scrape_status":            "ok",
+    }
 
 logging.basicConfig(
     level=logging.INFO,
