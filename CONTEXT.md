@@ -17,7 +17,7 @@
 - vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
 - indeed lane: 13:00/14:00 Stockholm, type='job-posting' — 6 leads approved with emails
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `eb816ed` (deployed with SUPABASE_SERVICE_ROLE_KEY), outreach-os `c35be5d`
+- Railway deploy: backend `31b0056`, outreach-os `c35be5d` (stuck on old cached build — needs manual reconnect)
 
 ### indeed-intel pipeline (as of 2026-06-16)
 - 15 leads pushed, type fixed to 'job-posting'
@@ -27,11 +27,17 @@
 - Pipeline script: `indeed-intel/pipeline_enrich_approve.py` (re-run for any new indeed leads)
 - Lane filter: type='job-posting' (source column now being migrated — see below)
 
-### source column status (being fixed)
-- SUPABASE_SERVICE_ROLE_KEY added to Railway backend env vars (2026-06-16)
-- Backend redeploy triggered — migrationService.js will add source column on startup
-- After migration lands: run `POST /api/admin/patch-indeed-type` (already done, sets type)
-- Workaround still active: emailService.js uses type field as lane proxy until source column confirmed
+### source column status — needs 1 manual step
+- SUPABASE_SERVICE_ROLE_KEY is now in Railway (added 2026-06-16)
+- migrationService.js can't reach Supabase pooler from Railway (tenant not found error)
+- emailService.js uses type field as proxy — sends work correctly without source column
+- TO ADD SOURCE COLUMN: paste into Supabase SQL editor (dashboard.supabase.com → SQL editor):
+  ```sql
+  ALTER TABLE leads ADD COLUMN IF NOT EXISTS source text;
+  ALTER TABLE sent_log ADD COLUMN IF NOT EXISTS source text;
+  ```
+  Then run: POST /api/admin/patch-indeed-type (already done — sets type='job-posting' for indeed leads)
+  Source column is optional — system works correctly using type field instead
 
 ### DB constraints — FIXED 2026-06-15
 - leads_status_check now includes all statuses: sending, bounced, out_of_office, sequence_complete
@@ -72,9 +78,12 @@
 
 ### Social outreach
 - Instagram: 6 leads in DB (dm_sent), endpoint tested and working
-- LinkedIn: redeploy triggered via Railway GraphQL API (2026-06-16). Once live:
-  POST /api/linkedin/find-all → { found, leads, errors, todo }
-  Fixes included: clinic_name→name fallback, claude-opus-4-8, error surface
+- LinkedIn: code is fixed in GitHub (commit c35be5d) but Railway can't rebuild outreach-os
+  (GitHub webhook not wired — service was created via API, not dashboard)
+  TO FIX: open Railway dashboard → cas-outreach-os service → Settings → Source
+  → click Disconnect, then reconnect CoutureValeria/cas-outreach-os repo (branch: master)
+  OR: run `railway login` in terminal, then from outreach-os/ dir: `railway up`
+  Fixes in code: clinic_name→name fallback, claude-opus-4-8, errors+todo in response
 
 ## City rotation framework (live as of 2026-06-14)
 
