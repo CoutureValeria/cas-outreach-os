@@ -13,12 +13,60 @@
 ## Current status as of 2026-06-18
 
 ### System health
-- Send cycle live: 9 vet leads + 6 indeed leads approved and ready
+- Send cycle live: 4 indeed leads approved and ready (Avaron, Svea Bank, R Gruppen Hyr, Lindalens)
 - vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
-- indeed lane: 13:00/14:00 Stockholm, type='job-posting' — 6 leads approved with emails
+- indeed lane: 13:00/14:00 Stockholm, type='job-posting'
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `31b0056`, outreach-os `8a43171` (rebuilt 2026-06-17 — LinkedIn WORKING)
+- Railway deploy: backend `7c85c69`, outreach-os `8a43171`
 - LinkedIn /api/linkedin/find: WORKING — returns lead object with Swedish connection_note
+
+### 5-root-cause email volume fix (2026-06-18) — commits aec7679, ca88fee, 7c85c69
+Diagnosed why only ~40 emails sent over several weeks. Root causes and fixes:
+
+**CAUSE 1 — Double-send race condition (Railway rolling deploy):**
+- Old: in-memory `_sendInProgressVet` flag — two simultaneous instances both read `false`, both send.
+- Fix: atomic DB claim in `_doSend()`: `UPDATE leads SET status='sending' WHERE id=? AND status='approved' RETURNING id`.
+  If 0 rows returned → another instance won, this instance skips. Postgres serialises concurrent UPDATEs.
+- Status: working — AlexVet sent at 18:04 created exactly 1 row. Pre-fix morning sends (sodervet, plutovets) had 2 rows each.
+
+**CAUSE 2 — Deploy during send window kills rest of day:**
+- Old: single catch-up send 2h after any missed window.
+- Fix: `detectMissedSendWindows()` counts all passed windows today per lane. Queues up to 3 vet + 2 indeed sends with 5-min gaps at startup, all using `force=true`.
+
+**CAUSE 3 — Clearout filtering 43% of valid leads:**
+- Old: blocked on `safe_to_send=false` which includes `catch_all` — Swedish SMBs commonly use catch-all.
+- Fix: only block when `status === 'invalid'` (hard bounce risk). `catch_all` proceeds with log line.
+- Also added chain clinic blocklist (`evidensia`, `anicura`, `djursjukhuset`, `vetgroup`) in `_doSend()` pre-Clearout.
+
+**CAUSE 4 — Indeed pipeline never ran on cron:**
+- Old: 08:00 cron only ran vet research. Indeed leads stayed `status='new'` forever unless manually triggered.
+- Fix: `runVetIntelPipeline()` now has explicit indeed block — processes up to 5 `type='job-posting'` leads per day.
+
+**CAUSE 5 — Daily limits too low:**
+- Old: VET_DAILY_LIMIT=3, INDEED_DAILY_LIMIT=1.
+- Fix: VET_DAILY_LIMIT=5, INDEED_DAILY_LIMIT=3 (env fallback in emailService.js).
+
+**force=true behaviour (ca88fee):**
+- Now bypasses: business hours check, circuit breaker, AND hourly gap.
+- Only bypassed before: business hours + circuit breaker. Hourly gap was blocking recovery sends.
+
+**New endpoint (7c85c69):**
+- `POST /api/send/next-indeed` — manual force-send for indeed lane (mirrors `/api/send/next`)
+
+**CAUSE 6 — Lane count query bug (2f3c185):**
+- `getTodaySentCountForLane()` used PostgREST `.eq('leads.type', x)` filter in `head:true` count mode.
+- PostgREST ignores embedded table filters in count/head mode — both lanes always returned TOTAL sent count.
+- Effect: any day with ≥3 total vet sends showed indeed as "limit reached" (0 indeed actually sent).
+- Fix: fetch all today's sent_log rows with lead type, filter in JS: `data.filter(r => r.leads?.type === leadType).length`
+
+**Verification (2026-06-18 sent_log):**
+- sodervet × 2, plutovets × 2 — double-sends from PRE-FIX morning crons (old code was live)
+- alexvet × 1 (18:04 UTC), svea.com × 1 (18:17 UTC), avaron.se × 1 (18:17 UTC) — all POST-FIX, each exactly 1 row
+
+**Capacity at full operation:**
+- Vet: 3 cron slots/day (09/10/11) × 5 days = 15/week typical; VET_DAILY_LIMIT=5 allows startup recovery to send up to 5/day
+- Indeed: 2 cron slots/day (13/14) × 5 days = 10/week typical; INDEED_DAILY_LIMIT=3 allows 1 extra via startup recovery
+- Total: ~25/week (up from ~7/week actual before fixes)
 
 ### Alert emails — reduced to essentials (as of 2026-06-17)
 - Health alerts: warm lead notifications only (reply detected → Kasper gets email)
@@ -80,7 +128,7 @@
 ### DB constraints — FIXED 2026-06-15
 - leads_status_check now includes all statuses: sending, bounced, out_of_office, sequence_complete
 - sent_log_type_check now includes: followup_1, followup_2
-- Send lock uses in-process mutex (ff469e2) — simpler than DB status, correct for 1 replica
+- Send lock: in-process mutex REPLACED (2026-06-18) with atomic DB claim — UPDATE WHERE status='approved' RETURNING id
 
 ### Email sequence (3-touch)
 - **Initial (day 0):** DISCOVERY style — asks an open question about their operational pain. No solution pitch. (Changed 2026-06-14)
@@ -194,12 +242,13 @@ Supabase pooler. Code has PGRST205 fallback so it works before migration lands.
 
 ## Send schedule
 
-- Mon–Fri: 09:00, 10:00, 11:00, 14:00 Stockholm (4 slots/day × 5 days = 20/week capacity)
-- DAILY_LIMIT = 4 (counts all outgoing emails: initial + follow-ups combined)
-- Daily pipeline: 08:00 Mon-Fri Stockholm (research + generate for imported leads)
+- Mon–Fri vet: 09:00, 10:00, 11:00 Stockholm — VET_DAILY_LIMIT=5
+- Mon–Fri indeed: 13:00, 14:00 Stockholm — INDEED_DAILY_LIMIT=3
+- Daily pipeline: 08:00 Mon-Fri Stockholm (research + generate for vet AND indeed new leads)
 - Health check: every 6h UTC
 - Weekly summary: Sunday 18:00 Stockholm (pipeline stats + lead counts)
 - IMAP poll: every 30 minutes (all configured inboxes in parallel)
+- Manual sends: POST /api/send/next (vet), POST /api/send/next-indeed (indeed) — both accept {force:true}
 
 ## Key env vars (Railway — backend)
 
