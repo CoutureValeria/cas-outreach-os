@@ -241,10 +241,10 @@ ABSOLUTA REGLER:
 - Inga bullet points, inga fetstil, inga bindestreck
 
 Avsluta med en blank rad, sedan exakt:
-Kasper
+Hör inte av dig om det inte känns relevant — ingen stress.
 
-Sen en sista rad exakt:
-Vill du inte bli kontaktad igen? Svara bara på det här mejlet.
+Sedan signaturen exakt:
+Kasper
 
 Skriv också ett kort ämnesrad (max 7 ord, inga spam-ord).
 

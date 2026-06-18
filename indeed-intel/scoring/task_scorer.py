@@ -207,9 +207,9 @@ STRUCTURE — exactly 3 lines/sentences before sign-off:
   LINE 3: "Eller har ni redan koll på det?"
 
 Blank line.
-Sign-off (exact): Kasper
+Hör inte av dig om det inte känns relevant — ingen stress.
 Blank line.
-Final line (exact): Vill du inte bli kontaktad igen? Svara bara på det här mejlet.
+Sign-off (exact): Kasper
 
 STRICT RULES — violating these means the email fails:
 - NEVER use "vi" (we) — always "jag" (I). Not "vi hjälper", not "vi jobbar", not "vi erbjuder"

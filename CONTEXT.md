@@ -197,22 +197,24 @@ getCityForLead() matches by area string automatically.
 ### Initial email (discovery, day 0)
 - LINE 1: Clinic-specific hook — structural (website signal) or review-based or fallback
 - LINES 2-3: Open discovery question about which operational area feels heaviest
-  - Examples: "Vad tar mest tid av det administrativa just nu — samtal, bokningar, eller uppföljning?"
+  - Examples: "Vad tar mest tid av det administrativa just nu, samtal, bokningar, eller uppföljning?"
   - No product. No "Vi löser det". No CTA beyond the question itself.
+- Opt-out line (exact, before sign-off): `Hör inte av dig om det inte känns relevant — ingen stress.`
 - Sign-off: `Kasper` (no company, no title)
-- Footer: `Vill du inte bli kontaktad igen? Svara bara på det här mejlet.`
 - LANGUAGE RULES (all email types): Never use "vi" — always "jag". Never mention Drivverk AB, CAS Automations, or any company name. Must sound like a curious individual, not a company doing outreach.
 
 ### Follow-up (solution pitch, day 5)
 - 2 lines before sign-off
 - Reframes around what they are LOSING (missed bookings, clients going elsewhere)
 - Ends with: "Fortfarande värt en titt?"
+- NO opt-out line — just the question and sign-off: `Kasper`
 - Generated per-lead using claude-haiku-4-5-20251001, references research_notes pain signal
 
 ### Breakup (final, day 10)
 - 2 lines before sign-off
 - Line 1 (exact): "Jag förstår om timing inte är rätt just nu."
-- Line 2: "Vill du att jag hör av mig igen om 2-3 månader istället?" OR "Om det är något specifikt som inte stämde, säg gärna till — annars hör jag inte av mig mer."
+- Line 2 (exact): "Hör gärna av dig om det någonsin blir aktuellt — annars hör jag inte av mig mer."
+- Sign-off: `Kasper` (no opt-out line — Line 2 doubles as natural close)
 
 ### Warm lead reply flow
 - Any reply to the discovery email is captured in `warm_lead_reply`

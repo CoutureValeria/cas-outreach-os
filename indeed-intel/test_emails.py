@@ -28,15 +28,13 @@ OLD_EMAILS = {
         "orderbehandling och fakturering, har ni funderat pa om den biten gar att "
         "automatisera innan ni anstaller? Vi hjalper foretag att satta upp order- och "
         "ekonomisystem som hanterar leveransovervakning och compliance-kontroll utan manuell hantering.\n\n"
-        "Kasper, Drivverk AB\n\n"
-        "Vill du inte bli kontaktad igen? Svara bara pa det har mejlet."
+        "Kasper"
     ),
     "LUFTFARTSVERKET": (
         "Jag sag er annons for Watch Supervisor Support, schemaläggning och hantering av "
         "personalforandringar sticker ut som nagot som ofta gar att losa med regelbaserad "
         "automatisering. Ar det den biten som tar mest tid, eller ar det annat i rollen?\n\n"
-        "Kasper, Drivverk AB\n\n"
-        "Vill du inte bli kontaktad igen? Svara bara pa det har mejlet."
+        "Kasper"
     ),
     "Cyklande Rormokaren": (
         "(No email generated in previous run - was borderline SEND)"
