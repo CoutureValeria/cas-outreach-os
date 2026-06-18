@@ -17,7 +17,8 @@
 - vet send lane: 09:00/10:00/11:00 Stockholm, type='veterinary'
 - indeed lane: 13:00/14:00 Stockholm, type='job-posting'
 - IMAP live, circuit ok, vet-intel import running daily
-- Railway deploy: backend `7c85c69`, outreach-os `8a43171`
+- Railway deploy: backend `60d4794`, outreach-os `eeb27fb`
+- Email tone overhaul (2026-06-18): sign-off = Kasper only, never "vi" always "jag", no company names, no formal opt-out, no em dashes
 - LinkedIn /api/linkedin/find: WORKING — returns lead object with Swedish connection_note
 
 ### 5-root-cause email volume fix (2026-06-18) — commits aec7679, ca88fee, 7c85c69

@@ -18,8 +18,9 @@ System deployed on:
 - Lead sourcing: vet-intel GitHub Actions daily 08:00 Stockholm
 
 Current status as of 2026-06-18:
-- Full system operational end to end — email volume fix deployed (6 root causes fixed)
-- Backend at commit 2f3c185 — lane count fix, lane count bug, double-send fix, catch_all fix all live
+- Full system operational end to end — email volume fix + email tone overhaul deployed
+- Backend at commit 60d4794 — tone/opt-out/em-dash fixes live
+- Outreach-OS at commit eeb27fb — indeed prompts + CONTEXT.md em-dash fixes live
 - Vet lane: ~15 sends/week (3 cron slots × 5 days). Indeed lane: ~10 sends/week (2 slots × 5 days)
 - 20-city rotation framework live (Stockholm + Gothenburg active, 18 queued)
 - Discovery-style initial emails live (questions, not pitches)
