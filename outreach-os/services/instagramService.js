@@ -4,7 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-const DM_TEMPLATE = 'Hej, lite nyfiken bara — hanterar ni bokningsförfrågningar som kommer in via Instagram?';
+const DM_TEMPLATE = 'Hej, lite nyfiken bara, hanterar ni bokningsförfrågningar som kommer in via Instagram?';
 
 const SEARCH_QUERIES = [
   'veterinärklinik Södermalm instagram',

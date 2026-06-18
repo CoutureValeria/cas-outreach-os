@@ -4,6 +4,17 @@ const { createClient } = require('@supabase/supabase-js');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
+function sanitizeEmail(text) {
+  if (!text) return text;
+  return text
+    .replace(/—/g, ',')
+    .replace(/–/g, ',')
+    .replace(/,\s*,/g, ',')
+    .replace(/\s+,\s+/g, ', ')
+    .replace(/  +/g, ' ')
+    .trim();
+}
+
 const PAIN_PHRASES = {
   phone_overload:     'hanterar mycket bokningar via telefon',
   no_online_booking:  'inte har onlinebokning',
@@ -87,7 +98,7 @@ For the connection_note:
   // Always generate connection_note if missing
   if (!result.connection_note) {
     const name = result.contact_name ? result.contact_name.split(' ')[0] : 'du';
-    result.connection_note = `Hej ${name}, såg att ${clinic_name} ${painPhrase} — jobbar med en lösning för just det. Skulle gärna connecta.`;
+    result.connection_note = `Hej ${name}, såg att ${clinic_name} ${painPhrase}, jobbar med en lösning för just det. Skulle gärna connecta.`;
   }
 
   const row = {
@@ -97,7 +108,7 @@ For the connection_note:
     contact_name: result.contact_name,
     title: result.title,
     linkedin_url: result.linkedin_url,
-    connection_note: result.connection_note,
+    connection_note: sanitizeEmail(result.connection_note),
     status: 'new',
   };
 
