@@ -30,24 +30,23 @@ _MODEL  = "claude-haiku-4-5-20251001"
 
 # ── Dash sanitizer (shared) ────────────────────────────────────────────────────
 
-def sanitize_dashes(text: str) -> str:
+def sanitize_email(text: str) -> str:
     """
-    Strips em dashes and en dashes from Claude-generated text.
-    Replaces ' — ' and ' – ' (with surrounding spaces) with ', '.
-    Replaces bare — or – with ', ' (catches mid-word usage).
-    Collapses double spaces afterward.
+    Strips em dashes and en dashes from any Claude-generated text before it
+    reaches Supabase or Resend. Prompt rules alone are not reliable (Claude
+    ignores them ~20% of the time). Applied to all outbound email text.
     """
     if not text:
         return text
-    text = text.replace("—", ",")   # em dash — -> ,
-    text = text.replace("–", ",")   # en dash – -> ,
-    # Clean up any ", ," or ",," artifacts
+    text = text.replace("—", ",")
+    text = text.replace("–", ",")
     text = re.sub(r",\s*,", ",", text)
-    # Fix " , " -> ", "
     text = re.sub(r"\s+,\s+", ", ", text)
-    # Collapse double spaces
     text = re.sub(r"  +", " ", text)
     return text.strip()
+
+# Alias for backwards compatibility with any callers using the old name
+sanitize_dashes = sanitize_email
 
 
 # ── Automation type → concrete example + Swedish label ────────────────────────
@@ -192,7 +191,7 @@ TEXT_PLACEHOLDER
 # ── Email prompt ───────────────────────────────────────────────────────────────
 
 _EMAIL_PROMPT_TEMPLATE = """\
-Write a cold outreach email in Swedish from Kasper at Drivverk AB.
+Write a cold outreach email in Swedish from Kasper. This must sound like a curious individual, NOT a company doing outreach.
 
 CONTEXT (use to understand the company, do NOT repeat back to them):
   Company: EMPLOYER_NAME
@@ -202,24 +201,22 @@ CONTEXT (use to understand the company, do NOT repeat back to them):
   Concrete example for this category: CONCRETE_EXAMPLE
   Contact name (if available): CONTACT_NAME
 
-STRUCTURE — exactly 4 lines/sentences before sign-off:
-  LINE 1: Greeting + brief mention of company/role. If contact_name is set use "Hej CONTACT_NAME," else "Hej,". Then one short sentence referencing you saw their posting for that type of role. Do NOT describe what they are hiring for or what the role involves.
-  LINE 2: A GENERAL observation about that TYPE of role — not about their specific tasks. Use the automation category label. Example structure: "Den typen av roll involverar ofta mycket [AUTOMATION_TYPE_LABEL] som tar tid manuellt."
-  LINE 3: Concrete example (use exactly as provided): CONCRETE_EXAMPLE
-  LINE 4: Discovery question: "Ar det nagot som kanns relevant for er, eller har ni redan koll pa det?"
+STRUCTURE — exactly 3 lines/sentences before sign-off:
+  LINE 1: Greeting. If contact_name is set use "Hej CONTACT_NAME," else "Hej,". Then one short sentence: "jag såg er annons för [role type]," referencing the job headline.
+  LINE 2: A genuine question: "Den typen av roll involverar ofta mycket [AUTOMATION_TYPE_LABEL], är det något ni känner igen?"
+  LINE 3: "Eller har ni redan koll på det?"
 
 Blank line.
-Sign-off (exact): Kasper, Drivverk AB
+Sign-off (exact): Kasper
 Blank line.
-Final line (exact): Vill du inte bli kontaktad igen? Svara bara pa det har mejlet.
+Final line (exact): Vill du inte bli kontaktad igen? Svara bara på det här mejlet.
 
 STRICT RULES — violating these means the email fails:
+- NEVER use "vi" (we) — always "jag" (I). Not "vi hjälper", not "vi jobbar", not "vi erbjuder"
+- NEVER mention Drivverk AB, CAS Automations, or any company name
 - Do NOT use em dashes or en dashes anywhere. Use comma or period instead.
-- Do NOT list or repeat their specific job tasks or responsibilities
-- Do NOT say what they are hiring for or what the role involves
 - Do NOT mention AI, bots, or technology brands
-- Do NOT use the words "automatisera" or "automation" — use "losas automatiskt" or "gar av sig sjalv" or "skots utan manuell hantering"
-- Exactly 4 lines before sign-off, then sign-off, then opt-out line
+- Do NOT pitch a solution — only ask a question
 - Write natural Swedish with proper Swedish characters (å, ä, ö)
 - Output ONLY the email text, nothing else
 """
@@ -293,7 +290,7 @@ def generate_email(posting: dict, score_data: dict) -> str:
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
-        return sanitize_dashes(raw)
+        return sanitize_email(raw)
     except Exception as e:
         return f"[Email generation failed: {e}]"
 

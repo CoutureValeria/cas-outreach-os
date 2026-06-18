@@ -28,6 +28,7 @@ from anthropic import Anthropic
 sys.path.insert(0, os.path.dirname(__file__))
 from collectors.openclaw_client import get_page_text
 from enrichment.pipeline import run_pipeline as _run_enrichment_pipeline
+from scoring.task_scorer import sanitize_email
 
 
 def enrich_company(company_name: str, website: str | None) -> dict:
@@ -188,8 +189,10 @@ def patch_lead(lead_id: str, updates: dict) -> bool:
 
 # ── Email generation (job-posting specific) ──────────────────────────────────
 _EMAIL_SYSTEM = (
-    "Du skriver svenska B2B cold emails till SME-företag (ej sjukvård). "
-    "Tonfall: direkt, nyfiken, inte säljigt. Max 4 rader + signatur. Ingen AI-nämning."
+    "Du skriver svenska cold emails som Kasper, en enskild person, inte ett bolag. "
+    "Tonfall: genuint nyfiken, inte säljigt. Aldrig 'vi', alltid 'jag'. "
+    "Nämn aldrig Drivverk AB, CAS Automations, eller vad Kasper säljer. "
+    "Max 3 rader + signatur. Ingen AI-nämning. Inga tankstreck (— eller –)."
 )
 
 def generate_indeed_email(lead: dict, enrichment: dict) -> tuple[str, str]:
@@ -199,31 +202,46 @@ def generate_indeed_email(lead: dict, enrichment: dict) -> tuple[str, str]:
     decision_maker  = enrichment.get("decision_maker") or ""
     summary         = enrichment.get("summary") or ""
     opportunities   = enrichment.get("automation_opportunities") or []
-    size            = enrichment.get("estimated_size") or ""
+
+    # Parse job_headline from research_notes if present
+    job_headline = ""
+    research_raw = lead.get("research_notes")
+    if research_raw:
+        try:
+            rn = json.loads(research_raw)
+            job_headline = rn.get("job_headline", "")
+        except Exception:
+            pass
 
     greeting = f"Hej {decision_maker}," if decision_maker else "Hej,"
-    opp_hint = f"\nSpecifika automationsmöjligheter identifierade: {', '.join(opportunities[:2])}" if opportunities else ""
+    opp_context = f"\nManuella arbetsuppgifter identifierade i annonsen: {', '.join(opportunities[:2])}" if opportunities else ""
 
-    prompt = f"""Skriv ett kort cold email på svenska till ett företag.
+    prompt = f"""Skriv ett kort cold email på svenska. Det ska låta som att en enskild person (Kasper) skickar det av nyfikenhet, INTE som ett bolag som gör outreach.
 
-Företag: {name}
-Ort: {area}
-{f'Storlek: {size}' if size else ''}
-{f'Sammanfattning: {summary}' if summary else ''}
-{opp_hint}
+Mottagare: {name}, {area}
+{f'Jobbtitel de söker: {job_headline}' if job_headline else ''}
+{f'Sammanfattning av företaget: {summary}' if summary else ''}
+{opp_context}
 
 FORMAT — 3 rader + signatur:
 
-RAD 1 (opener): Observation om deras verksamhet eller växt — konkret och specifik.
-Börja med "{greeting} jag märkte att..." eller "{greeting} jag noterade att..."
-Ge en casual observation baserad på sammanfattningen ovan. Om ingen info finns, använd:
-"{greeting} ni verkar ha ett riktigt brett erbjudande — hanterar ni mycket administration internt?"
+RAD 1 (opener): Referera till deras jobannons om möjligt.
+{f'Börja med: "{greeting} jag såg er annons för {job_headline}," och lägg sedan till en kort observation om att den typen av roll ofta innebär mycket manuellt arbete.'
+ if job_headline else
+ f'Börja med: "{greeting} jag märkte att..." eller "{greeting} jag snubblade på er sida och noterade att..." och gör en konkret observation.'}
 
-RADER 2-3 (discovery-fråga): En kort, genuin fråga om vilket operativt område som tar mest tid just nu.
-Ingen pitch. Ingen lösning. Bara nyfiken.
+RADER 2-3 (discovery-fråga): En kort, genuin fråga om det är något de känner igen, eller om de redan har koll på det.
+Ingen pitch. Ingen lösning. Ingen teknik. Bara nyfiken.
+
+ABSOLUTA REGLER:
+- Aldrig "vi", alltid "jag"
+- Nämn INTE Drivverk AB, CAS Automations, eller något eget företagsnamn
+- Nämn inte AI, automatisering, teknik, eller vad Kasper säljer
+- Det ska låta som en person som råkade se deras annons och blev nyfiken
+- Inga bullet points, inga fetstil, inga bindestreck
 
 Avsluta med en blank rad, sedan exakt:
-Kasper, Drivverk AB
+Kasper
 
 Sen en sista rad exakt:
 Vill du inte bli kontaktad igen? Svara bara på det här mejlet.
@@ -250,13 +268,7 @@ BODY:
     subject = subject_m.group(1).strip() if subject_m else f"Fråga till {name}"
     body    = body_m.group(1).strip() if body_m else text
 
-    # Sanitize dashes
-    for dash in ("—", "–"):
-        body = body.replace(dash, ",")
-    body = re.sub(r",\s*,", ",", body)
-    body = re.sub(r"  +", " ", body).strip()
-
-    return subject, body
+    return sanitize_email(subject), sanitize_email(body)
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────

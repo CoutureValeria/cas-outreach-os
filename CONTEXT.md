@@ -144,7 +144,7 @@ Diagnosed why only ~40 emails sent over several weeks. Root causes and fixes:
 - /api/test/status shows `sequence_complete` count + `breakup_sent_7d`
 
 ### Sign-off (all 3 emails)
-`Kasper, Drivverk AB` (rebranded from CAS Automations, applies to initial + FU1 + breakup)
+`Kasper` — just the first name, no company, no title. Applies to initial + FU1 + breakup for both vet and indeed leads.
 
 ### Email personalization
 - Greeting: "Hej Rebecca," when contact_name is set (extractFirstName handles multi-part names)
@@ -199,8 +199,9 @@ getCityForLead() matches by area string automatically.
 - LINES 2-3: Open discovery question about which operational area feels heaviest
   - Examples: "Vad tar mest tid av det administrativa just nu — samtal, bokningar, eller uppföljning?"
   - No product. No "Vi löser det". No CTA beyond the question itself.
-- Sign-off: `Kasper, Drivverk AB`
+- Sign-off: `Kasper` (no company, no title)
 - Footer: `Vill du inte bli kontaktad igen? Svara bara på det här mejlet.`
+- LANGUAGE RULES (all email types): Never use "vi" — always "jag". Never mention Drivverk AB, CAS Automations, or any company name. Must sound like a curious individual, not a company doing outreach.
 
 ### Follow-up (solution pitch, day 5)
 - 2 lines before sign-off
