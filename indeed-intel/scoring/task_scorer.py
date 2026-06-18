@@ -207,7 +207,7 @@ STRUCTURE — exactly 3 lines/sentences before sign-off:
   LINE 3: "Eller har ni redan koll på det?"
 
 Blank line.
-Hör inte av dig om det inte känns relevant — ingen stress.
+Hör inte av dig om det inte känns relevant, ingen stress.
 Blank line.
 Sign-off (exact): Kasper
 

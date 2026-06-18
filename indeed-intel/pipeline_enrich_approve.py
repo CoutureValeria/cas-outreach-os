@@ -241,7 +241,7 @@ ABSOLUTA REGLER:
 - Inga bullet points, inga fetstil, inga bindestreck
 
 Avsluta med en blank rad, sedan exakt:
-Hör inte av dig om det inte känns relevant — ingen stress.
+Hör inte av dig om det inte känns relevant, ingen stress.
 
 Sedan signaturen exakt:
 Kasper

@@ -199,7 +199,7 @@ getCityForLead() matches by area string automatically.
 - LINES 2-3: Open discovery question about which operational area feels heaviest
   - Examples: "Vad tar mest tid av det administrativa just nu, samtal, bokningar, eller uppföljning?"
   - No product. No "Vi löser det". No CTA beyond the question itself.
-- Opt-out line (exact, before sign-off): `Hör inte av dig om det inte känns relevant — ingen stress.`
+- Opt-out line (exact, before sign-off): `Hör inte av dig om det inte känns relevant, ingen stress.`
 - Sign-off: `Kasper` (no company, no title)
 - LANGUAGE RULES (all email types): Never use "vi" — always "jag". Never mention Drivverk AB, CAS Automations, or any company name. Must sound like a curious individual, not a company doing outreach.
 
@@ -213,8 +213,8 @@ getCityForLead() matches by area string automatically.
 ### Breakup (final, day 10)
 - 2 lines before sign-off
 - Line 1 (exact): "Jag förstår om timing inte är rätt just nu."
-- Line 2 (exact): "Hör gärna av dig om det någonsin blir aktuellt — annars hör jag inte av mig mer."
-- Sign-off: `Kasper` (no opt-out line — Line 2 doubles as natural close)
+- Line 2 (exact): "Hör gärna av dig om det någonsin blir aktuellt, annars hör jag inte av mig mer."
+- Sign-off: `Kasper` (no opt-out line, Line 2 doubles as natural close)
 
 ### Warm lead reply flow
 - Any reply to the discovery email is captured in `warm_lead_reply`
