@@ -4,7 +4,7 @@ Runs for all indeed leads (type=job-posting) that have no email address yet.
 
 Steps per lead:
   1. Normalize website URL (strip recruiter subdomains → real company domain)
-  2. Run openclaw enrichment to find email, phone, decision_maker, summary
+  2. Crawl website (BeautifulSoup) + Claude Haiku extraction to find email, phone, decision_maker, summary
   3. Generate a Swedish cold email (job-posting pitch, not vet-specific)
   4. PATCH lead in Supabase via service_role REST API
      Fields: email, phone, contact_name, research_notes, subject, body,

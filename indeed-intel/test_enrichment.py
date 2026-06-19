@@ -7,7 +7,7 @@ Mix chosen to cover all scenarios from the task:
   3. R Gruppen Hyr AB — vehicle rental, borderline 48% score
 
 For each lead: shows enrichment JSON + final email greeting comparison
-(Platsbanken contact_name vs OpenClaw decision_maker).
+(Platsbanken contact_name vs website decision_maker).
 """
 
 import json
@@ -98,13 +98,13 @@ for label, posting in found.items():
     print("  " + json.dumps(enrichment, ensure_ascii=False, indent=4).replace("\n", "\n  "))
 
     # ── Determine greeting contact name ──────────────────────────────────────
-    # Priority: Platsbanken contact_name > OpenClaw decision_maker > generic
+    # Priority: Platsbanken contact_name > website decision_maker > generic
     if plats_contact:
         greeting_name = plats_contact
         greeting_src  = "Platsbanken"
     elif enrichment.get("decision_maker"):
         greeting_name = enrichment["decision_maker"]
-        greeting_src  = "OpenClaw/website"
+        greeting_src  = "website"
     else:
         greeting_name = None
         greeting_src  = "generic"

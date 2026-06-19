@@ -38,7 +38,7 @@ for lead in TEST_LEADS:
 
     raw_text = get_page_text(url)
     if not raw_text:
-        print("  RESULT: page text fetch FAILED (both OpenClaw and bs4)")
+        print("  RESULT: page text fetch FAILED")
         continue
 
     print(f"  Page text: {len(raw_text)} chars")

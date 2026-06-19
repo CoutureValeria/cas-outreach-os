@@ -93,15 +93,11 @@ Diagnosed why only ~40 emails sent over several weeks. Root causes and fixes:
       booking_system absent + NOT appointment_heavy → +15 (generic manual pain)
       manual_workflows +20 | recruitment_active +10 | no_phone_and_email +10 | opportunities +20
   - `pipeline.py`  — orchestrates extractor + scorer → {data, automation_score, source_url, extraction_success}
-- **OpenClaw bridge:** `indeed-intel/collectors/openclaw_client.py` (updated 2026-06-18)
-  - Reads `OPENCLAW_URL` from env var (not hardcoded localhost)
-  - Set `OPENCLAW_URL=https://your-hostinger/api/session/webchat/invoke` in `indeed-intel/.env`
-  - `get_page_text(url)` — raw text path (OpenClaw generic prompt → bs4 fallback)
-  - `get_company_json(url)` — NEW: CAS-specific research prompt, returns structured JSON directly
-      Uses `_OPENCLAW_CAS_PROMPT` — full CAS lead researcher persona, visits 4 page types,
-      returns JSON with phone/email/booking_system/decision_maker/automation_opportunities
-      Falls back to None → callers use get_page_text + Claude Haiku as fallback
-  - Currently: OPENCLAW_URL not set → bs4 fallback active for all fetches
+- **Web crawler:** `indeed-intel/collectors/openclaw_client.py`
+  - `get_page_text(url)` — crawls homepage + up to 8 subpages (om-oss, kontakt, team, etc.)
+  - BeautifulSoup4 + requests, Swedish User-Agent, 0.25s polite crawl delay
+  - Returns concatenated text from all reachable pages; None if site unreachable
+  - OpenClaw evaluated 2026-06-19, deprioritized — bs4 + Claude Haiku is the permanent solution
 - **Gothenburg added** (2026-06-18): `indeed-intel/config/settings.py`
   - `MUNICIPALITY_GOTHENBURG = "1480"` + `GOTHENBURG_QUERIES` (7 query types)
   - `CITY_SEARCH_CONFIGS` list — Stockholm + Gothenburg both active
