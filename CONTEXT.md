@@ -20,7 +20,7 @@ source of truth for delivery status, opens, and bounces.
 
 ### System health
 - Full system operational end-to-end
-- Backend latest commit: `8c56980` (sanitize body+subject in _doSend before delivery — fixes stale pre-2026-06-18 email bodies)
+- Backend latest commit: `eed9177` (pre-send content gate — blocks stale bodies before Resend, flagged_stale_content status)
 - Outreach-OS latest commit: `8072170` (OpenClaw removed, bs4 is permanent)
 - Vet lane: 09:00/10:00/11:00 Stockholm, type='veterinary', VET_DAILY_LIMIT=5
 - Indeed lane: 13:00/14:00 Stockholm, type='job-posting', INDEED_DAILY_LIMIT=3
@@ -92,10 +92,12 @@ Pre-generated bodies from before the 2026-06-18 prompt fixes — both Python (in
 Node.js 08:00 pipeline (vet). `_doSend()` sent `lead.body` without sanitization.
 First repair script (fix_stale_indeed_emails.py) only checked job-posting type — missed vet leads.
 
-### Fix — two layers
-1. Backend commit `8c56980` — `_doSend()` now calls `sanitizeEmail()` on body+subject.
-   Catches em-dash artifacts. Does NOT rewrite hardcoded old text like "Drivverk AB".
-2. Repair scripts regenerate stale bodies with current prompts:
+### Fix — three layers
+1. Backend commit `8c56980` — `_doSend()` calls `sanitizeEmail()` on body+subject before send.
+2. Backend commit `eed9177` — pre-send content gate in `_doSend()` checks raw `lead.body` for
+   4 forbidden patterns before any Resend call. On match: status='flagged_stale_content',
+   loud error log, email quarantined. Falls back to status='skipped' if constraint rejects value.
+3. Repair scripts regenerate stale bodies with current prompts:
    - `indeed-intel/fix_stale_indeed_emails.py` — approved/generated job-posting leads
    - `indeed-intel/fix_stale_vet_emails.py` — approved/generated veterinary leads
    Both patched live: Hornstulls Hund & Katt and ZOO.se Bromma now have correct bodies.
